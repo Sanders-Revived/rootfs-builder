@@ -63,6 +63,9 @@ fi
 BASE_CONFIG="$KERNEL_DIR/arch/$ARCH/configs/msm8953.config"
 DEVICE_CONFIG="$KERNEL_DIR/arch/$ARCH/configs/motorola-sanders.config"
 TRIM_CONFIG="$KERNEL_DIR/arch/$ARCH/configs/no-unused-drivers.config"
+PANEL_NAME='automatic (lk2nd mdss_mdp.panel)'
+PANEL_DTB_TARGET='qcom/msm8953-motorola-sanders.dtb'
+PANEL_DTB_FILE='msm8953-motorola-sanders.dtb'
 [ -s "$BASE_CONFIG" ] || die "Missing config fragment: $BASE_CONFIG"
 [ -s "$DEVICE_CONFIG" ] || die "Missing config fragment: $DEVICE_CONFIG"
 [ -s "$TRIM_CONFIG" ] || die "Missing trim fragment: $TRIM_CONFIG"
@@ -73,22 +76,19 @@ kernel_make defconfig
   "$KERNEL_OUT/.config" "$TRIM_CONFIG" "$BASE_CONFIG" "$DEVICE_CONFIG"
 kernel_make olddefconfig
 
-say "Compiling kernel, DTBs and modules with $JOBS jobs"
-kernel_make -j"$JOBS" Image.gz modules \
-  qcom/msm8953-motorola-sanders.dtb \
-  qcom/msm8953-motorola-sanders-djn.dtb
+say "Compiling kernel, $PANEL_NAME DTB and modules with $JOBS jobs"
+kernel_make -j"$JOBS" Image.gz modules "$PANEL_DTB_TARGET"
 
 KREL="$(kernel_release)"
 BOOT_DIR="$KERNEL_OUT/arch/$ARCH/boot"
 DTB_DIR="$BOOT_DIR/dts/qcom"
 IMAGE="$BOOT_DIR/Image.gz"
-DTB="$DTB_DIR/msm8953-motorola-sanders.dtb"
-DTB_DJN="$DTB_DIR/msm8953-motorola-sanders-djn.dtb"
+DTB="$DTB_DIR/$PANEL_DTB_FILE"
 QCDT_TOOL="$ROOT/sh/mainline/make-qcdt.py"
 BOOTIMG_TOOL="$ROOT/sh/mainline/make-bootimg-qcdt.py"
 [[ -f "$QCDT_TOOL" ]] || die "QCDT generator missing: $QCDT_TOOL"
 [[ -f "$BOOTIMG_TOOL" ]] || die "boot image generator missing: $BOOTIMG_TOOL"
-for artifact in "$IMAGE" "$DTB" "$DTB_DJN" "$KERNEL_OUT/System.map" "$KERNEL_OUT/vmlinux"; do
+for artifact in "$IMAGE" "$DTB" "$KERNEL_OUT/System.map" "$KERNEL_OUT/vmlinux"; do
   [ -s "$artifact" ] || die "Kernel artifact missing: $artifact"
 done
 
@@ -106,17 +106,16 @@ tar -C "$MODULES_STAGE" -I zstd -cf "$MODULE_ARCHIVE" "lib/modules/$KREL"
 rm -rf "$MODULES_STAGE"
 
 cp "$IMAGE" "$STAGE/Image.gz"
-cp "$DTB" "$STAGE/msm8953-motorola-sanders.dtb"
-cp "$DTB_DJN" "$STAGE/msm8953-motorola-sanders-djn.dtb"
+cp "$DTB" "$STAGE/sanders.dtb"
 cp "$LK2ND_IMAGE" "$STAGE/lk2nd.img"
 cp "$KERNEL_OUT/.config" "$STAGE/kernel.config"
 cp "$KERNEL_OUT/System.map" "$STAGE/System.map"
 cp "$KERNEL_OUT/vmlinux" "$STAGE/vmlinux"
 printf '%s\n' "$KREL" > "$STAGE/kernel-release.txt"
+printf '%s\n' auto > "$STAGE/panel.txt"
 
 say "Creating Qualcomm QCDT tables for lk2nd"
-python3 "$QCDT_TOOL" "$STAGE/dt.img" "$DTB"
-python3 "$QCDT_TOOL" "$STAGE/dt-djn.img" "$DTB_DJN"
+python3 "$QCDT_TOOL" "$STAGE/dt.img" "$STAGE/sanders.dtb"
 
 validate_qcdt() {
   python3 - "$1" <<'PY'
@@ -152,14 +151,11 @@ PY
 }
 
 validate_qcdt "$STAGE/dt.img"
-validate_qcdt "$STAGE/dt-djn.img"
 cat "$IMAGE" "$DTB" > "$STAGE/Image.gz-dtb"
-cat "$IMAGE" "$DTB_DJN" > "$STAGE/Image.gz-dtb-djn"
 
 BOOT_ROOT="${SANDERS_BOOT_ROOT:-/dev/mmcblk0p53}"
 BOOT_CMDLINE="${SANDERS_BOOT_CMDLINE:-console=tty0 root=$BOOT_ROOT rootfstype=ext4 rw rootwait panic=10 fsck.repair=yes lpm_levels.sleep_disabled=1 msm.prefer_mdp5=true clk_ignore_unused pd_ignore_unused rootdelay=10}"
 BOOT_IMAGE="$STAGE/boot.img"
-BOOT_DJN_IMAGE="$STAGE/boot-djn.img"
 
 say "Creating Android boot images with the Sanders-tested legacy header"
 make_boot_image() {
@@ -185,7 +181,6 @@ make_boot_image() {
 }
 
 make_boot_image "$STAGE/Image.gz" "$STAGE/dt.img" "$BOOT_IMAGE"
-make_boot_image "$STAGE/Image.gz" "$STAGE/dt-djn.img" "$BOOT_DJN_IMAGE"
 
 write_boot_image_info() {
   local kernel_name="$1" dt_name="$2" info_file="$3"
@@ -211,7 +206,6 @@ EOF
 }
 
 write_boot_image_info Image.gz dt.img "$STAGE/bootimg-info.txt"
-write_boot_image_info Image.gz dt-djn.img "$STAGE/bootimg-info-djn.txt"
 
 {
   printf 'device=%s\n' "$DEVICE"
@@ -221,20 +215,19 @@ write_boot_image_info Image.gz dt-djn.img "$STAGE/bootimg-info-djn.txt"
   printf 'kernel_source_sha=%s\n' "$SOURCE_SHA"
   printf 'kernel_source_dirty=%s\n' "$([ -n "$SOURCE_DIRTY" ] && echo yes || echo no)"
   printf 'kernel_release=%s\n' "$KREL"
+  printf 'panel=auto (%s)\n' "$PANEL_NAME"
   printf 'bootimg_tool=%s\n' "$BOOTIMG_TOOL"
   printf 'bootimg_cmdline=%s\n' "$BOOT_CMDLINE"
   printf 'lk2nd_image=%s\n' "$LK2ND_IMAGE"
   printf 'lk2nd_partition=lk2nd\n'
-  printf 'bootimg_default=Image.gz + dt.img (Tianma NT35596)\n'
-  printf 'bootimg_djn=Image.gz + dt-djn.img (DJN ILI7807D)\n'
+  printf 'bootimg=Image.gz + dt.img (%s)\n' "$PANEL_NAME"
   printf 'built_utc=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 } > "$STAGE/source-report.txt"
 
 (cd "$STAGE" && sha256sum \
-  Image.gz Image.gz-dtb Image.gz-dtb-djn dt.img dt-djn.img boot.img boot-djn.img \
+  Image.gz Image.gz-dtb dt.img boot.img \
   lk2nd.img \
-  bootimg-info.txt bootimg-info-djn.txt \
-  msm8953-motorola-sanders.dtb msm8953-motorola-sanders-djn.dtb \
+  bootimg-info.txt sanders.dtb panel.txt \
   kernel.config System.map vmlinux kernel-release.txt \
   "kernel-modules-$KREL.tar.zst" > SHA256SUMS)
 
@@ -264,7 +257,7 @@ rm -rf "$PREVIOUS"
 say "Kernel build complete"
 say "Release: $RELEASE"
 say "Checkpoint: $CHECKPOINT"
-say "Android boot images: $RELEASE/boot.img and $RELEASE/boot-djn.img"
+say "Android boot image: $RELEASE/boot.img ($PANEL_NAME)"
 say "LK2ND: $RELEASE/lk2nd.img (flash to the lk2nd partition, not boot)"
 say 'The boot image requires LK2ND and boots the ext4 rootfs from /dev/mmcblk0p53.'
 if [ -n "$SOURCE_DIRTY" ]; then

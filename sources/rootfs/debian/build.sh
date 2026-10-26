@@ -19,7 +19,7 @@ ARCH="${SANDERS_DEBIAN_ARCH:-arm64}"
 MIRROR="${SANDERS_DEBIAN_MIRROR:-http://deb.debian.org/debian}"
 COMPONENTS="${SANDERS_DEBIAN_COMPONENTS:-main,contrib,non-free,non-free-firmware}"
 PACKAGES="${SANDERS_DEBIAN_PACKAGES:-systemd-sysv udev dbus network-manager wpasupplicant iproute2 iputils-ping kmod ca-certificates locales openssh-server}"
-IMAGE_SIZE_MIB="${SANDERS_DEBIAN_IMAGE_SIZE_MIB:-4096}"
+IMAGE_SIZE_MIB="${SANDERS_DEBIAN_IMAGE_SIZE_MIB:-1024}"
 MIN_FREE_MIB="${SANDERS_DEBIAN_MIN_FREE_MIB:-64}"
 ROOTFS_LABEL="${SANDERS_ROOTFS_LABEL:-debian-root}"
 : "${SANDERS_ROOT_PASSWORD:=sanders}"
@@ -54,8 +54,7 @@ sudo -n true 2>/dev/null || die 'Passwordless sudo is required for ext4 image cr
 [ -d "$FIRMWARE_SOURCE_DIR/modem/image" ] || die \
   "Sanders modem firmware directory is missing: $FIRMWARE_SOURCE_DIR/modem/image"
 [ -s "$CHECKPOINT/Image.gz" ] || die 'Checkpoint Image.gz is missing.'
-[ -s "$CHECKPOINT/msm8953-motorola-sanders.dtb" ] || die 'Checkpoint Sanders DTB is missing.'
-[ -s "$CHECKPOINT/msm8953-motorola-sanders-djn.dtb" ] || die 'Checkpoint Sanders DJN DTB is missing.'
+[ -s "$CHECKPOINT/sanders.dtb" ] || die 'Checkpoint Sanders DTB is missing.'
 [ -s /usr/lib/aarch64-linux-gnu/fakechroot/libfakechroot.so ] || die \
   'Missing ARM64 fakechroot library. Install/extract libfakechroot:arm64 for the WSL host.'
 [ -s /usr/lib/aarch64-linux-gnu/libfakeroot/libfakeroot-sysv.so ] || die \
@@ -157,8 +156,7 @@ ln -sfn ../../qcom/msm8953/motorola/sanders/WCNSS_qcom_wlan_nv.bin \
 audit_rootfs_symlinks
 
 cp "$CHECKPOINT/Image.gz" "$ROOTFS_DIR/boot/Image.gz-$KERNEL_RELEASE"
-cp "$CHECKPOINT/msm8953-motorola-sanders.dtb" "$ROOTFS_DIR/boot/msm8953-motorola-sanders.dtb"
-cp "$CHECKPOINT/msm8953-motorola-sanders-djn.dtb" "$ROOTFS_DIR/boot/msm8953-motorola-sanders-djn.dtb"
+cp "$CHECKPOINT/sanders.dtb" "$ROOTFS_DIR/boot/sanders.dtb"
 cp "$KERNEL_CONFIG_FILE" "$ROOTFS_DIR/boot/config-$KERNEL_RELEASE"
 cp "$KERNEL_SYSTEM_MAP_FILE" "$ROOTFS_DIR/boot/System.map-$KERNEL_RELEASE"
 ln -sfn "Image.gz-$KERNEL_RELEASE" "$ROOTFS_DIR/boot/Image.gz"
@@ -306,11 +304,14 @@ FREE_MIB=$((FREE_BLOCKS * BLOCK_SIZE / 1024 / 1024))
 
 SOURCE_SHA="unknown"
 [ -s "$CHECKPOINT/source-report.txt" ] && SOURCE_SHA="$(awk -F= '$1 == "kernel_source_sha" {print $2}' "$CHECKPOINT/source-report.txt")"
+PANEL="unknown"
+[ -s "$CHECKPOINT/panel.txt" ] && PANEL="$(cat "$CHECKPOINT/panel.txt")"
 cat > "$INFO" <<EOF
 distribution=debian
 suite=$SUITE
 architecture=$ARCH
 kernel_release=$KERNEL_RELEASE
+panel=$PANEL
 kernel_source_sha=$SOURCE_SHA
 kernel_modules=$KERNEL_MODULES_ARCHIVE
 firmware_repository=$FIRMWARE_REPOSITORY_URL

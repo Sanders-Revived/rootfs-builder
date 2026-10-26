@@ -35,21 +35,22 @@ bash sh/build.sh status
 bash sh/build.sh all              # kernel + Debian rootfs
 ```
 
-O build publica em `build/mainline/releases/`:
+O build publica em `build/mainline/releases/` uma única imagem universal:
 
-- `Image.gz`, DTBs crus e tabelas QCDT v2 para o lk2nd;
-- `boot.img` Android legado para o painel Tianma NT35596;
-- `boot-djn.img` Android legado para o painel DJN ILI7807D;
-- `msm8953-motorola-sanders.dtb` (Tianma);
-- `msm8953-motorola-sanders-djn.dtb` (DJN);
-- configuracao, `System.map`, `vmlinux`, modulos `.tar.zst` e `SHA256SUMS`.
+- `Image.gz`, `sanders.dtb` e `dt.img` (QCDT v2 para o lk2nd);
+- `boot.img` Android legado com seleção automática de painel pelo lk2nd;
+- `lk2nd.img`, configuração, `System.map`, `vmlinux`, módulos `.tar.zst` e
+  `SHA256SUMS`.
 
-`boot.img` usa o formato Android legado que este lk2nd espera: pagina 2048,
+O lk2nd lê o parâmetro `mdss_mdp.panel` herdado do bootloader stock e troca a
+compatibilidade do nó de painel no DTB antes de entregar o kernel. Assim a
+mesma imagem suporta Tianma NT35596 e DJN ILI7807D; os dois drivers permanecem
+no kernel porque são necessários para essa seleção automática.
+
+`boot.img` usa o formato Android legado que este lk2nd espera: página 2048,
 base `0x80000000`, offset do kernel `0x8000`, tags `0x100`, `Image.gz` puro e
-uma tabela Qualcomm QCDT v2 no campo DT da imagem. O `boot-djn.img` usa a
-mesma imagem de kernel com uma tabela QCDT contendo o DTB DJN. Isso evita
-anexar um DTB cru ao gzip, que faz o lk2nd interpretar bytes do kernel como
-versao da tabela.
+uma tabela Qualcomm QCDT v2 no campo DT da imagem. Os IDs QCDT identificam a
+placa; o painel é identificado separadamente pelo parâmetro `mdss_mdp.panel`.
 
 As imagens nao usam ramdisk: o kernel monta a particao ext4 `userdata` pelo
 dispositivo fixo `/dev/mmcblk0p53`. O label da imagem e `debian-root`, para
@@ -64,12 +65,12 @@ lk2nd; assim ele nao depende da variante de `mkbootimg` instalada no host.
 
 ## Debian arm64
 
-O fluxo Debian depende do checkpoint do kernel e gera uma receita minima com
-`mmdebstrap`, incluindo `Image.gz`, os dois DTBs Sanders, `System.map`, config e
-modulos em `/boot` e `/lib/modules`. Os formatos gerados sao:
+O fluxo Debian depende do checkpoint do kernel e gera uma receita mínima com
+`mmdebstrap`, incluindo `Image.gz`, o DTB Sanders universal, `System.map`,
+config e módulos em `/boot` e `/lib/modules`. Os formatos gerados são:
 
 - tarball `tar.zst` para extracao;
-- imagem ext4 de 4096 MiB, com no minimo 64 MiB livres.
+- imagem ext4 de 1024 MiB, com no minimo 64 MiB livres.
 
 ```sh
 bash sh/build.sh kernel
@@ -120,13 +121,12 @@ backup antes:
 fastboot flash boot lk2nd.img
 # reinicie no lk2nd/fastboot e execute novamente:
 fastboot flash userdata debian-bookworm-arm64-sanders-7.3.0-<release>.ext4
-fastboot flash boot boot.img       # Tianma NT35596
-# ou: fastboot flash boot boot-djn.img  # DJN ILI7807D
+fastboot flash boot boot.img       # Tianma/DJN selecionado pelo lk2nd
 fastboot reboot
 ```
 
-Para testar sem gravar a particao boot, use `fastboot boot boot.img` ou
-`fastboot boot boot-djn.img` quando o lk2nd ja estiver ativo. O lk2nd reserva 512 KiB no inicio da particao boot;
+Para testar sem gravar a partição boot, use `fastboot boot boot.img` quando o
+lk2nd já estiver ativo. O lk2nd reserva 512 KiB no início da partição boot;
 por isso o arquivo `boot.img` publicado e a imagem Android pura, sem padding.
 
 ## Organizacao

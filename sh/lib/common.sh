@@ -117,18 +117,14 @@ kernel_release() {
 ensure_checkpoint() {
   [ -s "$CHECKPOINT/kernel-release.txt" ] || \
     die 'No kernel checkpoint. Run: bash sh/build.sh kernel'
+  [ -s "$CHECKPOINT/panel.txt" ] || die 'Checkpoint panel selection is missing.'
   [ -s "$CHECKPOINT/kernel.config" ] || die 'Checkpoint config is missing.'
   [ -s "$CHECKPOINT/Image.gz" ] || die 'Checkpoint Image.gz is missing.'
-  [ -s "$CHECKPOINT/msm8953-motorola-sanders.dtb" ] || \
-    die 'Checkpoint Sanders DTB is missing.'
-  [ -s "$CHECKPOINT/dt.img" ] || die 'Checkpoint Tianma QCDT image is missing.'
-  [ -s "$CHECKPOINT/dt-djn.img" ] || die 'Checkpoint DJN QCDT image is missing.'
+  [ -s "$CHECKPOINT/sanders.dtb" ] || die 'Checkpoint Sanders DTB is missing.'
+  [ -s "$CHECKPOINT/dt.img" ] || die 'Checkpoint QCDT image is missing.'
   [ -s "$CHECKPOINT/boot.img" ] || die 'Checkpoint boot.img is missing.'
-  [ -s "$CHECKPOINT/boot-djn.img" ] || die 'Checkpoint boot-djn.img is missing.'
   [ -s "$CHECKPOINT/lk2nd.img" ] || die 'Checkpoint lk2nd.img is missing.'
   [ -s "$CHECKPOINT/bootimg-info.txt" ] || die 'Checkpoint bootimg-info.txt is missing.'
-  [ -s "$CHECKPOINT/bootimg-info-djn.txt" ] || \
-    die 'Checkpoint bootimg-info-djn.txt is missing.'
 
   local krel archive
   krel="$(cat "$CHECKPOINT/kernel-release.txt")"

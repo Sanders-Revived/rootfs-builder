@@ -21,6 +21,10 @@ the Vanadium OSS GitLab repository during the rootfs build. It does not run
 GitHub Actions or install host packages automatically. The boot image requires
 lk2nd: boot lk2nd.img once from stock fastboot, then flash the actual boot.img
 from the lk2nd fastboot interface.
+
+One universal boot image is emitted. LK2ND carries the panel identifier from
+the stock bootloader (`mdss_mdp.panel`) and rewrites the Sanders DTB to the
+matching Tianma or DJN Linux panel driver.
 EOF
 }
 
