@@ -1,14 +1,16 @@
 [Unit]
 Description=Synchronize Sanders clock after networking is available
 Wants=network-online.target
-After=NetworkManager.service NetworkManager-wait-online.service network-online.target
+After=NetworkManager.service
 ConditionPathExists=/usr/bin/timedatectl
 
 [Service]
 Type=oneshot
 ExecStart=/usr/local/sbin/sanders-time-sync
 RemainAfterExit=yes
-TimeoutStartSec=70
+TimeoutStartSec=infinity
+Restart=on-failure
+RestartSec=15
 
 [Install]
 WantedBy=multi-user.target

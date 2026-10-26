@@ -89,9 +89,11 @@ for overlay_file in \
   etc/ssh/sshd_config.d/90-sanders-root.conf \
   etc/systemd/system/sanders-ssh-hostkeys.service \
   etc/systemd/system/sanders-time-sync.service \
+  etc/systemd/system/sanders-grow-rootfs.service \
   etc/systemd/system/usb-gadget.service \
   usr/local/sbin/usb-gadget.sh \
-  usr/local/sbin/sanders-time-sync; do
+  usr/local/sbin/sanders-time-sync \
+  usr/local/sbin/sanders-grow-rootfs; do
   [ -f "$OVERLAY_DIR/$overlay_file" ] || die \
     "Runtime overlay file is missing: $OVERLAY_DIR/$overlay_file"
 done
@@ -147,7 +149,8 @@ install_runtime_overlay() {
   say 'Installing Sanders runtime overlay'
   rsync -a "$OVERLAY_DIR/" "$ROOTFS_DIR/"
   chmod 0755 "$ROOTFS_DIR/usr/local/sbin/usb-gadget.sh" \
-    "$ROOTFS_DIR/usr/local/sbin/sanders-time-sync"
+    "$ROOTFS_DIR/usr/local/sbin/sanders-time-sync" \
+    "$ROOTFS_DIR/usr/local/sbin/sanders-grow-rootfs"
 
   mkdir -p \
     "$ROOTFS_DIR/etc/systemd/timesyncd.conf.d" \
@@ -169,6 +172,8 @@ EOF
     "$ROOTFS_DIR/etc/systemd/system/multi-user.target.wants/sanders-ssh-hostkeys.service"
   ln -sfn ../sanders-time-sync.service \
     "$ROOTFS_DIR/etc/systemd/system/multi-user.target.wants/sanders-time-sync.service"
+  ln -sfn ../sanders-grow-rootfs.service \
+    "$ROOTFS_DIR/etc/systemd/system/multi-user.target.wants/sanders-grow-rootfs.service"
 }
 
 configure_root_password() {
@@ -320,6 +325,7 @@ audit_rootfs_runtime() {
     /usr/bin/nmcli \
     /sbin/wpa_supplicant \
     /usr/bin/timedatectl \
+    /sbin/resize2fs \
     /boot/Image.gz \
     /boot/sanders.dtb \
     /usr/lib/firmware/qcom/msm8953/motorola/sanders/a506_zap.mdt \

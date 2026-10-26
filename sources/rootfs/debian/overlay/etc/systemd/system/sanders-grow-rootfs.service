@@ -1,0 +1,13 @@
+[Unit]
+Description=Grow Sanders root filesystem to the userdata partition
+After=local-fs.target
+Before=multi-user.target
+ConditionPathExists=/sbin/resize2fs
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/sanders-grow-rootfs
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -1,18 +1,22 @@
 #!/bin/sh
 set -eu
 
-# Sanders has no reliable battery-backed RTC. Enable timesyncd and give it a
-# short opportunity to correct the clock before users run apt or SSH clients.
+# Sanders has no reliable battery-backed RTC. Wait for NetworkManager to have
+# a usable route before enabling timesyncd; otherwise the initial 1970 clock
+# can remain visible until the next manual sync.
+while ! nm-online -q -t 30; do
+    sleep 15
+done
+
 timedatectl set-ntp true >/dev/null 2>&1 || true
 
 i=0
-while [ "$i" -lt 30 ]; do
+while [ "$i" -lt 120 ]; do
     synchronized="$(timedatectl show -p NTPSynchronized --value 2>/dev/null || true)"
     [ "$synchronized" = yes ] && exit 0
     sleep 2
     i=$((i + 1))
 done
 
-# Offline boots must continue; systemd-timesyncd will keep retrying in the
-# background once Wi-Fi or USB networking becomes available.
-exit 0
+# Keep the unit retryable if NTP was unavailable during this boot.
+exit 1

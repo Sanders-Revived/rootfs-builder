@@ -1,0 +1,12 @@
+#!/bin/sh
+set -eu
+
+# The deployable image stays small for fast flashing. Grow the mounted ext4
+# filesystem to the end of userdata on the first boot.
+root_source="$(findmnt -no SOURCE / 2>/dev/null || true)"
+case "$root_source" in
+    /dev/mmcblk*|/dev/disk/by-partuuid/*) ;;
+    *) exit 0 ;;
+esac
+
+resize2fs "$root_source"
