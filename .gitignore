@@ -5,6 +5,7 @@
 /build/rootfs/*/
 /cache/mainline/
 /cache/rootfs/
+/cache/sources/
 /cache/.build.lock
 
 # Local source checkouts

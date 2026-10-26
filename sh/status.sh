@@ -3,10 +3,10 @@ set -Eeuo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 
 printf 'Project: %s\n' "$ROOT"
-printf 'Kernel:  %s\n' "$KERNEL_DIR"
+printf 'Kernel URL:   %s\n' "$KERNEL_URL"
+printf 'Kernel cache: %s\n' "$KERNEL_DIR"
 if [ -d "$KERNEL_DIR/.git" ]; then
-  printf 'Branch:  %s\n' "$(git -C "$KERNEL_DIR" branch --show-current)"
-  printf 'Commit:  %s\n' "$(git -C "$KERNEL_DIR" rev-parse --short HEAD)"
+  printf 'Commit:       %s\n' "$(git -C "$KERNEL_DIR" rev-parse --short HEAD)"
   if [ -n "$(git -C "$KERNEL_DIR" status --porcelain --untracked-files=all)" ]; then
     printf 'Source:  dirty\n'
   else
@@ -14,6 +14,14 @@ if [ -d "$KERNEL_DIR/.git" ]; then
   fi
 else
   printf 'Source:  missing\n'
+fi
+
+printf 'Firmware URL:   %s\n' "$FIRMWARE_URL"
+printf 'Firmware cache: %s\n' "$FIRMWARE_DIR"
+if [ -d "$FIRMWARE_DIR/.git" ]; then
+  printf 'Firmware commit: %s\n' "$(git -C "$FIRMWARE_DIR" rev-parse --short HEAD)"
+else
+  printf 'Firmware: missing\n'
 fi
 
 if [ -s "$CHECKPOINT/kernel-release.txt" ]; then

@@ -1,39 +1,41 @@
 #!/usr/bin/env bash
-# Rootfs runner. Each distro is isolated in its own local recipe.
+# Debian rootfs runner.
 set -Eeuo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
 
-DISTRO="${1:-}"
+DISTRO="${1:-debian}"
 shift || true
 case "$DISTRO" in
-  alpine|debian|ubuntu) ;;
+  debian) ;;
   -h|--help|help)
     cat <<EOF
-Usage: bash sh/build.sh rootfs alpine|debian|ubuntu
+Usage: bash sh/build.sh rootfs [debian]
 
-A local recipe must exist at:
-  $ROOT/sources/rootfs/<distro>/build.sh
+The Debian recipe is at:
+  $ROOT/sources/rootfs/debian/build.sh
 
 The recipe receives the current kernel checkpoint through KERNEL_RELEASE,
 KERNEL_MODULES_ARCHIVE, KERNEL_CONFIG_FILE and KERNEL_SYSTEM_MAP_FILE.
 EOF
     exit 0
     ;;
-  *) die 'Choose one rootfs: alpine, debian or ubuntu.' ;;
+  *) die 'Only the Debian rootfs is supported.' ;;
 esac
 [ "$#" -eq 0 ] || die 'Rootfs builder does not accept extra arguments.'
 
-require_commands tar zstd
+require_commands git tar zstd
 acquire_lock
+ensure_firmware_source
 KREL="$(ensure_checkpoint)"
-RECIPE_ROOT="${SANDERS_ROOTFS_DIR:-$ROOT/sources/rootfs}"
-RECIPE="$RECIPE_ROOT/$DISTRO/build.sh"
-[ -s "$RECIPE" ] || die "No local $DISTRO recipe at $RECIPE. Kernel build is ready; add a rootfs recipe first."
+RECIPE="$ROOT/sources/rootfs/debian/build.sh"
+[ -s "$RECIPE" ] || die "Debian recipe is missing: $RECIPE"
 
 OUT_DIR="$CACHE_ROOT/rootfs/$DISTRO/out"
 WORK_DIR="$CACHE_ROOT/rootfs/$DISTRO/work"
 mkdir -p "$OUT_DIR" "$WORK_DIR" "$BUILD_ROOT/rootfs/$DISTRO"
 export ROOT BUILD_ROOT CACHE_ROOT CHECKPOINT DISTRO ROOTFS_LABEL="$DISTRO"
+export FIRMWARE_SOURCE_DIR="$FIRMWARE_DIR"
+export FIRMWARE_REPOSITORY_URL="$FIRMWARE_URL" FIRMWARE_REF FIRMWARE_SHA
 export KERNEL_RELEASE="$KREL" WORK_DIR OUT_DIR
 export KERNEL_MODULES_ARCHIVE="$CHECKPOINT/kernel-modules-$KREL.tar.zst"
 export KERNEL_CONFIG_FILE="$CHECKPOINT/kernel.config"

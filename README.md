@@ -1,25 +1,27 @@
 # Sanders mainline builder
 
-Builder local e enxuto para o Motorola Moto G5S Plus (Sanders). O kernel nao
-e clonado automaticamente: o build usa o checkout local do nosso kernel.
+Builder reproduzivel e enxuto para o Motorola Moto G5S Plus (Sanders). O
+kernel e o firmware sao clonados automaticamente para caches ignorados pelo
+Git; o repositorio guarda somente o codigo do builder e a receita Debian.
 
 ## Build do kernel
 
 ```sh
-cd /home/light/sanders-mainline
+cd /home/light/rootfs-builder
 bash sh/build.sh kernel
 ```
 
 Por padrao, o script usa:
 
 ```text
-source: /home/light/linux-barni
-branch: barni2000/7.3/develop
-remote: https://github.com/Sanders-Revived/linux.git
+repository: https://github.com/Sanders-Revived/linux.git
+ref: barni2000/7.3/develop
+cache: cache/sources/linux
+firmware: https://gitlab.com/vanadium-oss/motorola-msm8953/mainline/sanders-firmware
 ```
 
-Para usar outro checkout, defina `SANDERS_KERNEL_DIR`. A configuracao e
-gerada com `defconfig`, `no-unused-drivers.config`, `msm8953.config` e
+O build clona ou atualiza o cache automaticamente. A configuracao e gerada
+com `defconfig`, `no-unused-drivers.config`, `msm8953.config` e
 `motorola-sanders.config`. O fragmento de limpeza desliga plataformas e
 drivers fora do Sanders.
 
@@ -28,7 +30,7 @@ Opcoes:
 ```sh
 bash sh/build.sh kernel --reuse  # valida o ultimo checkpoint
 bash sh/build.sh kernel --clean  # recompila do zero o output do kernel
-bash sh/build.sh update           # fast-forward explicito da fonte
+bash sh/build.sh update           # atualiza o cache clonado
 bash sh/build.sh status
 bash sh/build.sh all              # kernel + Debian rootfs
 ```
@@ -85,21 +87,22 @@ As variaveis `SANDERS_DEBIAN_SUITE`, `SANDERS_DEBIAN_MIRROR`,
 `SANDERS_DEBIAN_PACKAGES`, `SANDERS_DEBIAN_IMAGE_SIZE_MIB` e
 `SANDERS_DEBIAN_MIN_FREE_MIB` permitem ajustar a receita.
 
-## Rootfs
+## Rootfs Debian
 
-Debian possui receita local em `sources/rootfs/debian/build.sh`. Alpine e
-Ubuntu continuam como wrappers para receitas locais futuras; o repositorio
-remoto antigo nao e clonado automaticamente.
+O projeto suporta somente Debian arm64. A receita em
+`sources/rootfs/debian/build.sh` clona o firmware mantido pelo Vanadium OSS,
+registra o commit usado no `build-info.txt` e instala o modem, WCNSS e os
+arquivos de calibracao WLAN do Sanders.
 
 ```sh
-bash sh/build.sh rootfs alpine
+bash sh/build.sh rootfs
 bash sh/build.sh rootfs debian
-bash sh/build.sh rootfs ubuntu
 ```
 
 O kernel e seus modulos sao expostos a receita por variaveis como
 `KERNEL_RELEASE`, `KERNEL_MODULES_ARCHIVE`, `KERNEL_CONFIG_FILE` e
-`KERNEL_SYSTEM_MAP_FILE`.
+`KERNEL_SYSTEM_MAP_FILE`. O firmware e exposto por
+`FIRMWARE_SOURCE_DIR`, `FIRMWARE_REF` e `FIRMWARE_SHA`.
 
 ## Instalacao no aparelho
 
@@ -127,13 +130,14 @@ sh/build.sh                  entrada principal
 sh/lib/common.sh             configuracao e validacoes compartilhadas
 sh/mainline/build.sh         build do kernel
 sh/mainline/update-source.sh atualizacao explicita da fonte
-sh/rootfs/build.sh           executor de receitas locais
+sh/rootfs/build.sh           gerador exclusivo do Debian
 sources/rootfs/debian/       receita Debian arm64
 build/mainline/              outputs do kernel
 build/rootfs/debian/         releases Debian tar.zst/ext4
-cache/mainline/              checkpoint, modulos e ccache
-cache/rootfs/                area de trabalho descartavel
-sources/                     fontes externas opcionais
+cache/mainline/              kernel clonado, checkpoint, modulos e ccache
+cache/rootfs/                area de trabalho descartavel do Debian
+cache/sources/               caches clonados do kernel e firmware
+sources/                     somente receita e documentacao do builder
 ```
 
 O builder nao executa GitHub Actions, nao instala pacotes do host

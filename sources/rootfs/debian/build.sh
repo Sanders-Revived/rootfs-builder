@@ -22,7 +22,10 @@ PACKAGES="${SANDERS_DEBIAN_PACKAGES:-systemd-sysv udev dbus network-manager wpas
 IMAGE_SIZE_MIB="${SANDERS_DEBIAN_IMAGE_SIZE_MIB:-4096}"
 MIN_FREE_MIB="${SANDERS_DEBIAN_MIN_FREE_MIB:-64}"
 ROOTFS_LABEL="${SANDERS_ROOTFS_LABEL:-debian-root}"
-FIRMWARE_SOURCE_DIR="${SANDERS_FIRMWARE_DIR:-$ROOT/sources/rootfs/debian/firmware}"
+: "${FIRMWARE_SOURCE_DIR:?rootfs runner did not export FIRMWARE_SOURCE_DIR}"
+: "${FIRMWARE_REPOSITORY_URL:?rootfs runner did not export FIRMWARE_REPOSITORY_URL}"
+: "${FIRMWARE_REF:?rootfs runner did not export FIRMWARE_REF}"
+: "${FIRMWARE_SHA:?rootfs runner did not export FIRMWARE_SHA}"
 
 OUT_DIR="$BUILD_ROOT/rootfs/debian"
 WORK_ROOT="$CACHE_ROOT/rootfs/debian"
@@ -45,6 +48,10 @@ sudo -n true 2>/dev/null || die 'Passwordless sudo is required for ext4 image cr
 [ -s "$KERNEL_MODULES_ARCHIVE" ] || die "Kernel modules archive is missing: $KERNEL_MODULES_ARCHIVE"
 [ -s "$KERNEL_CONFIG_FILE" ] || die "Kernel config is missing: $KERNEL_CONFIG_FILE"
 [ -s "$KERNEL_SYSTEM_MAP_FILE" ] || die "Kernel System.map is missing: $KERNEL_SYSTEM_MAP_FILE"
+[ -s "$FIRMWARE_SOURCE_DIR/wlan/WCNSS_qcom_wlan_nv.bin" ] || die \
+  "Sanders firmware NV file is missing: $FIRMWARE_SOURCE_DIR/wlan/WCNSS_qcom_wlan_nv.bin"
+[ -d "$FIRMWARE_SOURCE_DIR/modem/image" ] || die \
+  "Sanders modem firmware directory is missing: $FIRMWARE_SOURCE_DIR/modem/image"
 [ -s "$CHECKPOINT/Image.gz" ] || die 'Checkpoint Image.gz is missing.'
 [ -s "$CHECKPOINT/msm8953-motorola-sanders.dtb" ] || die 'Checkpoint Sanders DTB is missing.'
 [ -s "$CHECKPOINT/msm8953-motorola-sanders-djn.dtb" ] || die 'Checkpoint Sanders DJN DTB is missing.'
@@ -122,28 +129,30 @@ done
 audit_rootfs_symlinks
 
 # Debian's generic firmware packages do not contain all firmware used by the
-# Sanders multimedia/remoteproc stack. Keep the donor-compatible ADSP, modem,
-# Venus, MBA, WCNSS and Adreno files in this local recipe and add the legacy
-# top-level aliases expected by Qualcomm drivers.
-if [ -d "$FIRMWARE_SOURCE_DIR" ]; then
-  say "Installing local Sanders firmware"
-  mkdir -p "$ROOTFS_DIR/usr/lib/firmware"
-  cp -a "$FIRMWARE_SOURCE_DIR/." "$ROOTFS_DIR/usr/lib/firmware/"
-  for firmware_name in \
-    adsp.b00 adsp.b01 adsp.b02 adsp.b03 adsp.b04 adsp.b05 adsp.b06 \
-    adsp.b07 adsp.b08 adsp.b09 adsp.b10 adsp.b11 adsp.b12 adsp.b13 \
-    adsp.mdt mba.mbn \
-    modem.b00 modem.b01 modem.b02 modem.b04 modem.b05 modem.b06 \
-    modem.b07 modem.b08 modem.b09 modem.b10 modem.b11 modem.b12 \
-    modem.b13 modem.b16 modem.b17 modem.b18 modem.b19 modem.b20 modem.mdt \
-    venus.b00 venus.b01 venus.b02 venus.b03 venus.b04 venus.mdt \
-    wcnss.b00 wcnss.b01 wcnss.b02 wcnss.b04 wcnss.b06 \
-    wcnss.b09 wcnss.b10 wcnss.b11 wcnss.b12 wcnss.mdt; do
-    [ -e "$ROOTFS_DIR/usr/lib/firmware/postmarketos/$firmware_name" ] || continue
-    ln -sfn "postmarketos/$firmware_name" \
-      "$ROOTFS_DIR/usr/lib/firmware/$firmware_name"
-  done
-fi
+# Sanders multimedia, remoteproc and WCNSS stacks. Clone the maintained
+# Vanadium OSS repository at build time and install its modem image plus the
+# Sanders-specific WLAN calibration/configuration files.
+say "Installing Sanders firmware commit $FIRMWARE_SHA"
+mkdir -p "$ROOTFS_DIR/usr/lib/firmware/postmarketos" \
+  "$ROOTFS_DIR/usr/lib/firmware/qcom/msm8953/motorola/sanders" \
+  "$ROOTFS_DIR/usr/lib/firmware/wlan/prima"
+cp -a "$FIRMWARE_SOURCE_DIR/modem/image/." \
+  "$ROOTFS_DIR/usr/lib/firmware/postmarketos/"
+for firmware_path in "$FIRMWARE_SOURCE_DIR/modem/image/"*; do
+  [ -f "$firmware_path" ] || continue
+  firmware_name="${firmware_path##*/}"
+  ln -sfn "postmarketos/$firmware_name" \
+    "$ROOTFS_DIR/usr/lib/firmware/$firmware_name"
+done
+cp "$FIRMWARE_SOURCE_DIR/wlan/WCNSS_qcom_wlan_nv.bin" \
+  "$ROOTFS_DIR/usr/lib/firmware/qcom/msm8953/motorola/sanders/"
+for wlan_name in WCNSS_cfg.dat WCNSS_qcom_cfg.ini; do
+  [ -s "$FIRMWARE_SOURCE_DIR/wlan/$wlan_name" ] || continue
+  cp "$FIRMWARE_SOURCE_DIR/wlan/$wlan_name" \
+    "$ROOTFS_DIR/usr/lib/firmware/wlan/prima/$wlan_name"
+done
+ln -sfn ../../qcom/msm8953/motorola/sanders/WCNSS_qcom_wlan_nv.bin \
+  "$ROOTFS_DIR/usr/lib/firmware/wlan/prima/WCNSS_qcom_wlan_nv.bin"
 audit_rootfs_symlinks
 
 cp "$CHECKPOINT/Image.gz" "$ROOTFS_DIR/boot/Image.gz-$KERNEL_RELEASE"
@@ -308,6 +317,9 @@ architecture=$ARCH
 kernel_release=$KERNEL_RELEASE
 kernel_source_sha=$SOURCE_SHA
 kernel_modules=$KERNEL_MODULES_ARCHIVE
+firmware_repository=$FIRMWARE_REPOSITORY_URL
+firmware_ref=$FIRMWARE_REF
+firmware_source_sha=$FIRMWARE_SHA
 image_size_mib=$IMAGE_SIZE_MIB
 rootfs_label=$ROOTFS_LABEL
 image_free_mib=$FREE_MIB

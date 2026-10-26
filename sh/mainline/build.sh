@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build the local Sanders kernel and publish checked artifacts.
+# Clone, build and publish the Sanders kernel with checked artifacts.
 set -Eeuo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
 
@@ -7,7 +7,10 @@ usage() {
   cat <<EOF
 Usage: bash sh/mainline/build.sh [OPTION]
 
-Builds the checkout at:
+Clones and builds:
+  $KERNEL_URL
+
+The checkout is cached at:
   $KERNEL_DIR
 
 Expected branch:
@@ -19,7 +22,8 @@ Options:
   --help   show this help
 
 Overrides:
-  SANDERS_KERNEL_DIR, SANDERS_KERNEL_REF, SANDERS_KERNEL_OUT, JOBS,
+  SANDERS_KERNEL_URL, SANDERS_KERNEL_REF, SANDERS_KERNEL_CACHE_DIR,
+  SANDERS_KERNEL_OUT, JOBS,
   SANDERS_BOOT_CMDLINE, SANDERS_LK2ND_IMAGE
 EOF
 }
@@ -209,11 +213,10 @@ EOF
 write_boot_image_info Image.gz dt.img "$STAGE/bootimg-info.txt"
 write_boot_image_info Image.gz dt-djn.img "$STAGE/bootimg-info-djn.txt"
 
-KERNEL_REMOTE_URL="$(git -C "$KERNEL_DIR" remote get-url "$KERNEL_REMOTE" 2>/dev/null || true)"
 {
   printf 'device=%s\n' "$DEVICE"
-  printf 'kernel_dir=%s\n' "$KERNEL_DIR"
-  printf 'kernel_remote=%s\n' "$KERNEL_REMOTE_URL"
+  printf 'kernel_url=%s\n' "$KERNEL_URL"
+  printf 'kernel_cache=%s\n' "$KERNEL_DIR"
   printf 'kernel_ref=%s\n' "$KERNEL_REF"
   printf 'kernel_source_sha=%s\n' "$SOURCE_SHA"
   printf 'kernel_source_dirty=%s\n' "$([ -n "$SOURCE_DIRTY" ] && echo yes || echo no)"

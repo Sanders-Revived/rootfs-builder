@@ -10,17 +10,17 @@ SANDERS MAINLINE BUILDER
   bash sh/build.sh kernel [--clean|--reuse]
   bash sh/build.sh update
   bash sh/build.sh status
-  bash sh/build.sh rootfs alpine|debian|ubuntu
+  bash sh/build.sh rootfs [debian]
   bash sh/build.sh all [--clean|--reuse]
 
-The default kernel source is /home/light/linux-barni on branch
-barni2000/7.3/develop. Override it with SANDERS_KERNEL_DIR.
+The builder clones the kernel branch barni2000/7.3/develop from
+https://github.com/Sanders-Revived/linux.git into its ignored cache.
 
-The kernel build is local and deterministic. It does not clone repositories,
-run GitHub Actions, or install host packages automatically. It also publishes
-a Sanders-compatible Android boot.img using the local mkbootimg tool. The boot
-image requires lk2nd: boot lk2nd.img once from stock fastboot, then flash the
-actual boot.img from the lk2nd fastboot interface.
+The builder supports only Debian arm64. It clones the Sanders firmware from
+the Vanadium OSS GitLab repository during the rootfs build. It does not run
+GitHub Actions or install host packages automatically. The boot image requires
+lk2nd: boot lk2nd.img once from stock fastboot, then flash the actual boot.img
+from the lk2nd fastboot interface.
 EOF
 }
 
