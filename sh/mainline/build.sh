@@ -191,7 +191,9 @@ PY
 validate_qcdt "$STAGE/dt.img"
 cat "$IMAGE" "$DTB" > "$STAGE/Image.gz-dtb"
 
-BOOT_ROOT="${SANDERS_BOOT_ROOT:-/dev/mmcblk1p53}"
+# Sanders' GPT userdata PARTUUID from the target's kernel partition table.
+# This avoids mmcblk numbering changes when the SD card is present or absent.
+BOOT_ROOT="${SANDERS_BOOT_ROOT:-PARTUUID=c2f3b3c6-acb4-332f-fe55-920f956be79d}"
 BOOT_CMDLINE="${SANDERS_BOOT_CMDLINE:-console=tty0 root=$BOOT_ROOT rootfstype=ext4 rw rootwait panic=10 fsck.repair=yes lpm_levels.sleep_disabled=1 msm.prefer_mdp5=true clk_ignore_unused pd_ignore_unused rootdelay=10}"
 BOOT_IMAGE="$STAGE/boot.img"
 

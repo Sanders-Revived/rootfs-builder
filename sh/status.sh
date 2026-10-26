@@ -28,8 +28,8 @@ fi
 if [ -s "$CHECKPOINT/kernel-release.txt" ]; then
   printf 'Checkpoint: %s (%s)\n' "$CHECKPOINT" "$(cat "$CHECKPOINT/kernel-release.txt")"
   [ ! -s "$CHECKPOINT/source-report.txt" ] || sed -n '1,20p' "$CHECKPOINT/source-report.txt"
-  if grep -q 'root=/dev/mmcblk1p53' "$CHECKPOINT/bootimg-info.txt" 2>/dev/null; then
-    printf 'Root device: eMMC /dev/mmcblk1p53 (SD is mmcblk0 on Sanders)\n'
+  if grep -q 'root=PARTUUID=c2f3b3c6-acb4-332f-fe55-920f956be79d' "$CHECKPOINT/bootimg-info.txt" 2>/dev/null; then
+    printf 'Root device: userdata PARTUUID c2f3b3c6-acb4-332f-fe55-920f956be79d (MMC-number independent)\n'
   else
     printf 'Root device: STALE (rebuild kernel checkpoint)\n'
   fi

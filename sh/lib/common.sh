@@ -183,7 +183,7 @@ ensure_checkpoint() {
   [ -s "$CHECKPOINT/boot.img" ] || die 'Checkpoint boot.img is missing.'
   [ -s "$CHECKPOINT/lk2nd.img" ] || die 'Checkpoint lk2nd.img is missing.'
   [ -s "$CHECKPOINT/bootimg-info.txt" ] || die 'Checkpoint bootimg-info.txt is missing.'
-  grep -q 'root=/dev/mmcblk1p53' "$CHECKPOINT/bootimg-info.txt" || die \
+  grep -q 'root=PARTUUID=c2f3b3c6-acb4-332f-fe55-920f956be79d' "$CHECKPOINT/bootimg-info.txt" || die \
     'Checkpoint boot image uses an obsolete root device; rebuild the kernel checkpoint.'
 
   local krel archive
