@@ -50,10 +50,23 @@ require_commands() {
   ((${#missing[@]} == 0)) || die "Missing Debian rootfs tools: ${missing[*]}"
 }
 
-require_commands mmdebstrap fakechroot fakeroot qemu-aarch64-static rsync tar zstd \
+require_commands mmdebstrap qemu-aarch64-static rsync tar zstd \
   mkfs.ext4 e2fsck tune2fs blkid truncate sha256sum openssl
 sudo -n true 2>/dev/null || die 'Passwordless sudo is required for ext4 image creation.'
 [ "$ARCH" = arm64 ] || die "Only arm64 Debian rootfs is supported; got $ARCH."
+
+# Use mmdebstrap's root mode by default. This WSL environment already grants
+# passwordless sudo for image creation, and root mode copies static QEMU into
+# the target chroot instead of relying on the host binfmt loader prefix.
+MMDEBSTRAP_MODE="${SANDERS_MMDEBSTRAP_MODE:-root}"
+case "$MMDEBSTRAP_MODE" in
+  root)
+    sudo -n true 2>/dev/null || die 'Passwordless sudo is required for SANDERS_MMDEBSTRAP_MODE=root.'
+    ;;
+  *)
+    die "Unsupported SANDERS_MMDEBSTRAP_MODE: $MMDEBSTRAP_MODE (use root)."
+    ;;
+esac
 [ -s "$KERNEL_MODULES_ARCHIVE" ] || die "Kernel modules archive is missing: $KERNEL_MODULES_ARCHIVE"
 [ -s "$KERNEL_CONFIG_FILE" ] || die "Kernel config is missing: $KERNEL_CONFIG_FILE"
 [ -s "$KERNEL_SYSTEM_MAP_FILE" ] || die "Kernel System.map is missing: $KERNEL_SYSTEM_MAP_FILE"
@@ -81,10 +94,6 @@ for overlay_file in \
 done
 [ -s "$CHECKPOINT/Image.gz" ] || die 'Checkpoint Image.gz is missing.'
 [ -s "$CHECKPOINT/sanders.dtb" ] || die 'Checkpoint Sanders DTB is missing.'
-[ -s /usr/lib/aarch64-linux-gnu/fakechroot/libfakechroot.so ] || die \
-  'Missing ARM64 fakechroot library. Install/extract libfakechroot:arm64 for the WSL host.'
-[ -s /usr/lib/aarch64-linux-gnu/libfakeroot/libfakeroot-sysv.so ] || die \
-  'Missing ARM64 fakeroot library. Install/extract libfakeroot:arm64 for the WSL host.'
 
 case "$SUITE" in
   bookworm|trixie|stable|testing) ;;
@@ -161,33 +170,29 @@ sudo -n rm -rf "$ROOTFS_DIR" "$STAGE"
 mkdir -p "$ROOTFS_DIR" "$STAGE"
 trap 'sudo -n rm -rf "$ROOTFS_DIR" "$STAGE"' EXIT
 
-say "Bootstrapping Debian $SUITE/$ARCH with fakechroot + qemu"
-# Debian Trixie's openssh-server postinst runs the target sshd with `-G` while
-# configuring the package. On WSL's qemu binfmt wrapper that direct exec can
-# lose QEMU_LD_PREFIX even though the rest of mmdebstrap is working. Replace
-# only that bootstrap-time probe with the host-side true(1); the real target
-# sshd and host keys are initialized by the first-boot unit below.
-FAKECHROOT_CMD_SUBST="${FAKECHROOT_CMD_SUBST:-}"
-case ":$FAKECHROOT_CMD_SUBST:" in
-  *:/usr/sbin/sshd=/bin/true:*) ;;
-  *) FAKECHROOT_CMD_SUBST="${FAKECHROOT_CMD_SUBST:+$FAKECHROOT_CMD_SUBST:}/usr/sbin/sshd=/bin/true" ;;
-esac
-export FAKECHROOT_CMD_SUBST
-mmdebstrap \
-  --mode=fakechroot \
+say "Bootstrapping Debian $SUITE/$ARCH with $MMDEBSTRAP_MODE + qemu"
+# Root mode copies qemu-aarch64-static into the target, so maintainer scripts
+# can execute ARM64 programs with the target's own loader and libraries.
+sudo -n mmdebstrap \
+  --mode="$MMDEBSTRAP_MODE" \
   --format=directory \
   --architectures="$ARCH" \
   --variant=minbase \
   --components="$COMPONENTS" \
   --include="$PACKAGES" \
+  --setup-hook='mkdir -p "$1/usr/libexec/qemu-binfmt" && cp /usr/bin/qemu-aarch64-static "$1/usr/libexec/qemu-binfmt/aarch64-binfmt-P" && chmod 0755 "$1/usr/libexec/qemu-binfmt/aarch64-binfmt-P"' \
   --aptopt='Acquire::Languages "none"' \
   --aptopt='APT::Install-Recommends "false"' \
   --aptopt='APT::Install-Suggests "false"' \
   "$SUITE" "$ROOTFS_DIR" "$MIRROR"
 
-# fakechroot can leak the host-side fake root into absolute symlinks created by
-# package maintainer scripts. Those links would be broken after deployment.
-say "Normalizing fakechroot symlinks"
+# Continue the assembly as the build user; ownership is normalized to 0:0
+# again immediately before the deployable tarball and ext4 image are made.
+sudo -n chown -R "$(id -u):$(id -g)" "$ROOTFS_DIR"
+
+# Normalize absolute symlinks created by package maintainer scripts before
+# overlay files are added to the deployed rootfs.
+say "Normalizing rootfs symlinks"
 normalize_rootfs_symlinks
 audit_rootfs_symlinks
 
