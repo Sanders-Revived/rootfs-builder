@@ -2,7 +2,7 @@
 
 ## Fluxo
 
-1. `profile.sh` define os padrões do Debian Bookworm arm64.
+1. `profile.sh` define os padrões do Debian 13 Trixie arm64.
 2. `build.sh` cria o sistema mínimo com `mmdebstrap`.
 3. O checkpoint do kernel e os módulos são incorporados.
 4. O firmware Sanders é clonado do repositório Vanadium OSS e instalado.

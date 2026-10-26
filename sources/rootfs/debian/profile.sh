@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Sanders Debian profile. Existing environment variables take precedence.
 
-: "${SANDERS_DEBIAN_SUITE:=bookworm}"
+: "${SANDERS_DEBIAN_SUITE:=trixie}"
 : "${SANDERS_DEBIAN_ARCH:=arm64}"
 : "${SANDERS_DEBIAN_MIRROR:=http://deb.debian.org/debian}"
 : "${SANDERS_DEBIAN_COMPONENTS:=main,contrib,non-free,non-free-firmware}"

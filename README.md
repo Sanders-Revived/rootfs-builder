@@ -121,7 +121,7 @@ backup antes:
 ```sh
 fastboot flash boot lk2nd.img
 # reinicie no lk2nd/fastboot e execute novamente:
-fastboot flash userdata debian-bookworm-arm64-sanders-7.3.0-<release>.ext4
+fastboot flash userdata debian-trixie-arm64-sanders-7.3.0-<release>.ext4
 fastboot flash boot boot.img       # Tianma/DJN selecionado pelo lk2nd
 fastboot reboot
 ```
