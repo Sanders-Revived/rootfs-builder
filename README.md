@@ -111,8 +111,13 @@ O kernel e seus modulos sao expostos a receita por variaveis como
 `KERNEL_RELEASE`, `KERNEL_MODULES_ARCHIVE`, `KERNEL_CONFIG_FILE` e
 `KERNEL_SYSTEM_MAP_FILE`. O firmware e exposto por
 `FIRMWARE_SOURCE_DIR`, `FIRMWARE_REF` e `FIRMWARE_SHA`.
-O rootfs usa a senha inicial `sanders` para o usuario `root`; ela pode ser
-alterada no build com `SANDERS_ROOT_PASSWORD`. Chaves SSH, `machine-id`,
+O rootfs cria o usuario administrativo `light` e instala a chave publica
+definida por `SANDERS_ADMIN_PUBKEY_FILE` (por padrao,
+`~/.ssh/id_ed25519.pub`). O SSH aceita somente chave: o root pode entrar
+apenas por chave, a senha do root fica bloqueada e `light` tambem nao aceita
+senha pela rede. A senha local inicial de `light` e `123` por compatibilidade
+com o dispositivo atual; altere `SANDERS_LIGHT_PASSWORD` se necessario.
+O build falha se a chave publica nao existir. Chaves SSH de host, `machine-id`,
 random-seed, logs, indices APT, caches e o helper QEMU sao removidos no fim;
 as chaves e o `machine-id` sao criados no primeiro boot. Um servico adicional
 aciona o `systemd-timesyncd` depois da rede para evitar o erro APT “Release file

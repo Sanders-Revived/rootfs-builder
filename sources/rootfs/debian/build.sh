@@ -32,6 +32,9 @@ NTP_SERVERS="$SANDERS_NTP_SERVERS"
 FALLBACK_NTP_SERVERS="$SANDERS_FALLBACK_NTP_SERVERS"
 NTP_ROOT_DISTANCE_MAX_SEC="$SANDERS_NTP_ROOT_DISTANCE_MAX_SEC"
 INCLUDE_GENERIC_QCOM_FIRMWARE="$SANDERS_DEBIAN_INCLUDE_GENERIC_QCOM_FIRMWARE"
+ROOT_PASSWORD="$SANDERS_ROOT_PASSWORD"
+LIGHT_PASSWORD="$SANDERS_LIGHT_PASSWORD"
+ADMIN_PUBKEY_FILE="$SANDERS_ADMIN_PUBKEY_FILE"
 : "${FIRMWARE_SOURCE_DIR:?rootfs runner did not export FIRMWARE_SOURCE_DIR}"
 : "${FIRMWARE_REPOSITORY_URL:?rootfs runner did not export FIRMWARE_REPOSITORY_URL}"
 : "${FIRMWARE_REF:?rootfs runner did not export FIRMWARE_REF}"
@@ -81,6 +84,10 @@ for zap_name in a506_zap.mdt a506_zap.b00 a506_zap.b01 a506_zap.b02; do
     "Sanders Adreno 506 firmware is missing: $FIRMWARE_SOURCE_DIR/modem/image/$zap_name"
 done
 [ -d "$OVERLAY_DIR" ] || die "Runtime overlay is missing: $OVERLAY_DIR"
+[ -s "$ADMIN_PUBKEY_FILE" ] || die \
+  "Admin public key is missing: $ADMIN_PUBKEY_FILE (set SANDERS_ADMIN_PUBKEY_FILE)"
+awk 'NF >= 2 && $1 ~ /^ssh-(ed25519|rsa|ecdsa-)/ { found = 1 } END { exit !found }' \
+  "$ADMIN_PUBKEY_FILE" || die "Admin public key is not a supported OpenSSH public key: $ADMIN_PUBKEY_FILE"
 for overlay_file in \
   etc/hosts \
   etc/fstab \
@@ -178,13 +185,36 @@ EOF
     "$ROOTFS_DIR/etc/systemd/system/multi-user.target.wants/sanders-grow-rootfs.service"
 }
 
-configure_root_password() {
-  say 'Configuring the root SSH password'
-  local root_password_hash
-  root_password_hash="$(printf '%s' "$SANDERS_ROOT_PASSWORD" | openssl passwd -6 -stdin)"
-  awk -F: -v hash="$root_password_hash" 'BEGIN { OFS=FS } $1 == "root" { $2 = hash } { print }' \
+configure_ssh_access() {
+  say 'Configuring key-only SSH access for root and light'
+  local root_password_hash light_password_hash
+  root_password_hash="$(printf '%s' "$ROOT_PASSWORD" | openssl passwd -6 -stdin)"
+  light_password_hash="$(printf '%s' "$LIGHT_PASSWORD" | openssl passwd -6 -stdin)"
+
+  if awk -F: '$1 == "light" || $3 == 1000 { found = 1 } END { exit found ? 0 : 1 }' \
+    "$ROOTFS_DIR/etc/passwd"; then
+    die 'The Debian base already uses the light account or UID 1000.'
+  fi
+  printf '%s\n' 'light:x:1000:1000:Sanders administrator:/home/light:/bin/bash' \
+    >> "$ROOTFS_DIR/etc/passwd"
+  printf '%s\n' 'light:x:1000:' >> "$ROOTFS_DIR/etc/group"
+  printf '%s\n' "light:${light_password_hash}:20000:0:99999:7:::" \
+    >> "$ROOTFS_DIR/etc/shadow"
+  if [ -f "$ROOTFS_DIR/etc/gshadow" ]; then
+    printf '%s\n' 'light:!*::' >> "$ROOTFS_DIR/etc/gshadow"
+  fi
+
+  # Keep a recovery hash for the local console, but lock it so SSH can only
+  # use the authorized key below.
+  awk -F: -v hash="!$root_password_hash" 'BEGIN { OFS=FS } $1 == "root" { $2 = hash } { print }' \
     "$ROOTFS_DIR/etc/shadow" > "$ROOTFS_DIR/etc/shadow.new"
   mv "$ROOTFS_DIR/etc/shadow.new" "$ROOTFS_DIR/etc/shadow"
+
+  install -d -m 0700 "$ROOTFS_DIR/home/light/.ssh" "$ROOTFS_DIR/root/.ssh"
+  install -m 0600 "$ADMIN_PUBKEY_FILE" "$ROOTFS_DIR/home/light/.ssh/authorized_keys"
+  install -m 0600 "$ADMIN_PUBKEY_FILE" "$ROOTFS_DIR/root/.ssh/authorized_keys"
+  chown -R 1000:1000 "$ROOTFS_DIR/home/light"
+  chown -R 0:0 "$ROOTFS_DIR/root/.ssh"
   ln -sfn /lib/systemd/system/ssh.service \
     "$ROOTFS_DIR/etc/systemd/system/multi-user.target.wants/ssh.service"
 }
@@ -280,7 +310,7 @@ ln -sfn "Image.gz-$KERNEL_RELEASE" "$ROOTFS_DIR/boot/vmlinuz"
 
 printf '%s\n' sanders > "$ROOTFS_DIR/etc/hostname"
 install_runtime_overlay
-configure_root_password
+configure_ssh_access
 configure_timezone
 printf 'kernel_release=%s\n' "$KERNEL_RELEASE" > "$ROOTFS_DIR/etc/sanders-kernel-release"
 
@@ -338,7 +368,9 @@ audit_rootfs_runtime() {
     /boot/Image.gz \
     /boot/sanders.dtb \
     /usr/lib/firmware/qcom/msm8953/motorola/sanders/a506_zap.mdt \
-    /usr/lib/firmware/qcom/msm8953/motorola/sanders/WCNSS_qcom_wlan_nv.bin; do
+    /usr/lib/firmware/qcom/msm8953/motorola/sanders/WCNSS_qcom_wlan_nv.bin \
+    /home/light/.ssh/authorized_keys \
+    /root/.ssh/authorized_keys; do
     [ -e "$ROOTFS_DIR$required" ] || die "Required runtime file is missing: $required"
   done
   [ ! -e "$ROOTFS_DIR/usr/bin/qemu-aarch64-static" ] || die 'QEMU helper leaked into rootfs.'
@@ -348,6 +380,11 @@ audit_rootfs_runtime() {
     die 'Build-time SSH host key leaked into rootfs.'
   fi
   [ ! -s "$ROOTFS_DIR/etc/machine-id" ] || die 'Build-time machine-id leaked into rootfs.'
+  awk -F: '$1 == "root" { found = 1; locked = ($2 ~ /^!/) } END { exit (found && locked) ? 0 : 1 }' \
+    "$ROOTFS_DIR/etc/shadow" || die 'Root password is not locked in the rootfs.'
+  grep -q '^PasswordAuthentication no$' \
+    "$ROOTFS_DIR/etc/ssh/sshd_config.d/90-sanders-root.conf" || \
+    die 'SSH password authentication is not disabled in the rootfs.'
   [ -L "$ROOTFS_DIR/var/lib/dbus/machine-id" ] || die 'dbus machine-id is not a first-boot symlink.'
   if find "$ROOTFS_DIR/var/lib/apt/lists" -mindepth 1 -print -quit | grep -q .; then
     die 'APT indexes were not removed from rootfs.'
@@ -402,7 +439,11 @@ rootfs_label=$ROOTFS_LABEL
 image_free_mib=$FREE_MIB
 image_min_free_mib=$MIN_FREE_MIB
 rootfs_payload_bytes=$ROOTFS_PAYLOAD_BYTES
-ssh_root_password_configured=yes
+ssh_root_login=key_only
+ssh_password_authentication=no
+ssh_admin_user=light
+ssh_admin_key=provided_at_build
+light_local_password_configured=yes
 ssh_host_keys=generated_on_first_boot
 machine_id=generated_on_first_boot
 qemu_build_helpers=removed
