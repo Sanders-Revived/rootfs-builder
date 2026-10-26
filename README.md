@@ -80,14 +80,19 @@ bash sh/build.sh rootfs debian
 bash sh/build.sh all
 ```
 
-No WSL, a receita usa `fakechroot` + `qemu-aarch64-static`; nao depende de
-binfmt ARM64 funcional dentro do chroot. O host precisa ter `mmdebstrap`,
-`fakechroot`, `fakeroot`, `qemu-user-static`, `zstd`, `rsync` e as bibliotecas
-ARM64 de fakechroot/fakeroot. O builder nao instala essas dependencias sozinho.
+No WSL, a receita usa o modo `root` do `mmdebstrap` com `qemu-aarch64-static`
+dentro do chroot. Isso evita a combinação instável de `fakechroot`/`fakeroot`
+com scripts postinst ARM64. O host precisa ter `mmdebstrap`,
+`qemu-user-static`, `zstd`, `rsync`, `e2fsprogs`, `openssl` e `sudo` sem
+senha para os comandos de montagem/criação da imagem. O builder nao instala
+essas dependencias sozinho.
 
 As variaveis `SANDERS_DEBIAN_SUITE`, `SANDERS_DEBIAN_MIRROR`,
 `SANDERS_DEBIAN_PACKAGES`, `SANDERS_DEBIAN_IMAGE_SIZE_MIB` e
-`SANDERS_DEBIAN_MIN_FREE_MIB` permitem ajustar a receita.
+`SANDERS_DEBIAN_MIN_FREE_MIB` permitem ajustar a receita. O firmware
+Qualcomm generico fica habilitado por padrao porque atende Venus/remoteproc;
+`SANDERS_DEBIAN_INCLUDE_GENERIC_QCOM_FIRMWARE=0` gera uma imagem experimental
+menor, sem essa garantia.
 
 ## Rootfs Debian
 
@@ -106,7 +111,11 @@ O kernel e seus modulos sao expostos a receita por variaveis como
 `KERNEL_SYSTEM_MAP_FILE`. O firmware e exposto por
 `FIRMWARE_SOURCE_DIR`, `FIRMWARE_REF` e `FIRMWARE_SHA`.
 O rootfs usa a senha inicial `sanders` para o usuario `root`; ela pode ser
-alterada no build com `SANDERS_ROOT_PASSWORD`.
+alterada no build com `SANDERS_ROOT_PASSWORD`. Chaves SSH, `machine-id`,
+random-seed, logs, indices APT, caches e o helper QEMU sao removidos no fim;
+as chaves e o `machine-id` sao criados no primeiro boot. Um servico adicional
+aciona o `systemd-timesyncd` depois da rede para evitar o erro APT “Release file
+is not valid yet” causado pelo RTC sem bateria.
 
 O fragmento Sanders do kernel evita drivers que nao correspondem ao hardware
 ou ao transporte escolhido: `ath10k`, RMI4 e funcoes USB ACM/serial ficam fora;
@@ -122,10 +131,10 @@ ser carregada pelo `lk2nd`. Isso apaga o Android e os dados do usuario; faca
 backup antes:
 
 ```sh
-fastboot flash boot lk2nd.img
+fastboot boot lk2nd.img       # pelo fastboot stock; temporario
 # reinicie no lk2nd/fastboot e execute novamente:
 fastboot flash userdata debian-trixie-arm64-sanders-7.3.0-<release>.ext4
-fastboot flash boot boot.img       # Tianma/DJN selecionado pelo lk2nd
+fastboot flash boot boot.img # Tianma/DJN selecionado pelo lk2nd
 fastboot reboot
 ```
 

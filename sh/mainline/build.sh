@@ -26,7 +26,8 @@ Overrides:
   SANDERS_KERNEL_OUT, JOBS,
   SANDERS_GPU_FIRMWARE_ROOT, SANDERS_GPU_FIRMWARE_STAGE,
   SANDERS_GPU_FIRMWARE_SOURCE_URL,
-  SANDERS_BOOT_CMDLINE, SANDERS_LK2ND_IMAGE
+  SANDERS_BOOT_CMDLINE, SANDERS_LK2ND_IMAGE,
+  SANDERS_KERNEL_DEBUG_INFO (default: 0)
 EOF
 }
 
@@ -45,6 +46,12 @@ ensure_kernel_source
 ensure_firmware_source
 prepare_gpu_firmware
 [ -s "$LK2ND_IMAGE" ] || die "LK2ND image not found: $LK2ND_IMAGE"
+
+KEEP_DEBUG_INFO="${SANDERS_KERNEL_DEBUG_INFO:-0}"
+case "$KEEP_DEBUG_INFO" in
+  0|1) ;;
+  *) die 'SANDERS_KERNEL_DEBUG_INFO must be 0 or 1.' ;;
+esac
 
 if [ "$mode" = reuse ]; then
   KREL="$(ensure_checkpoint)"
@@ -93,6 +100,19 @@ bash "$KCONFIG_TOOL" --file "$KERNEL_OUT/.config" \
   --enable CONFIG_BATTERY_PMI8994_FG \
   --enable CONFIG_CHARGER_QCOM_SMBCHG
 kernel_make olddefconfig
+
+if [ "$KEEP_DEBUG_INFO" -eq 0 ]; then
+  say 'Disabling build-only kernel DWARF information'
+  bash "$KCONFIG_TOOL" --file "$KERNEL_OUT/.config" \
+    --disable CONFIG_DEBUG_INFO \
+    --disable CONFIG_DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT \
+    --disable CONFIG_DEBUG_INFO_REDUCED \
+    --disable CONFIG_DEBUG_INFO_COMPRESSED_NONE \
+    --disable CONFIG_DEBUG_INFO_BTF
+  kernel_make olddefconfig
+  grep -q '^CONFIG_DEBUG_INFO=y' "$KERNEL_OUT/.config" && die \
+    'Kernel debug information remained enabled after debloat policy.'
+fi
 
 say "Compiling kernel, $PANEL_NAME DTB and modules with $JOBS jobs"
 kernel_make -j"$JOBS" Image.gz modules "$PANEL_DTB_TARGET"
@@ -228,20 +248,21 @@ write_boot_image_info Image.gz dt.img "$STAGE/bootimg-info.txt"
 {
   printf 'device=%s\n' "$DEVICE"
   printf 'kernel_url=%s\n' "$KERNEL_URL"
-  printf 'kernel_cache=%s\n' "$KERNEL_DIR"
+  printf 'kernel_cache=cache/sources/linux\n'
   printf 'kernel_ref=%s\n' "$KERNEL_REF"
   printf 'kernel_source_sha=%s\n' "$SOURCE_SHA"
   printf 'kernel_source_dirty=%s\n' "$([ -n "$SOURCE_DIRTY" ] && echo yes || echo no)"
   printf 'kernel_release=%s\n' "$KREL"
+  printf 'kernel_debug_info=%s\n' "$KEEP_DEBUG_INFO"
   printf 'gpu_driver=msm-freedreno (Adreno 506)\n'
   printf 'gpu_extra_firmware=%s\n' "$GPU_EXTRA_FIRMWARE"
-  printf 'gpu_firmware_stage=%s\n' "$GPU_FIRMWARE_STAGE"
+  printf 'gpu_firmware_stage=cache/mainline/gpu-firmware\n'
   printf 'battery_driver=pmi8996-fg (CONFIG_BATTERY_PMI8994_FG=y)\n'
   printf 'charger_driver=qcom-smbchg (qcom,pmi8950-smbchg; CONFIG_CHARGER_QCOM_SMBCHG=y)\n'
   printf 'panel=auto (%s)\n' "$PANEL_NAME"
-  printf 'bootimg_tool=%s\n' "$BOOTIMG_TOOL"
+  printf 'bootimg_tool=sh/mainline/make-bootimg-qcdt.py\n'
   printf 'bootimg_cmdline=%s\n' "$BOOT_CMDLINE"
-  printf 'lk2nd_image=%s\n' "$LK2ND_IMAGE"
+  printf 'lk2nd_image=external/lk2nd.img\n'
   printf 'lk2nd_partition=lk2nd\n'
   printf 'bootimg=Image.gz + dt.img (%s)\n' "$PANEL_NAME"
   printf 'built_utc=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"

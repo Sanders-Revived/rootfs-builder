@@ -39,3 +39,30 @@ fi
 
 printf '\nReleases:\n'
 find "$RELEASES" -mindepth 1 -maxdepth 1 -type d -printf '  %f\n' 2>/dev/null | sort -r || true
+
+printf '\nLatest kernel artifact:\n'
+if [ -s "$BUILD_ROOT/mainline/latest" ] && [ -d "$(cat "$BUILD_ROOT/mainline/latest")" ]; then
+  KERNEL_LATEST="$(cat "$BUILD_ROOT/mainline/latest")"
+  printf '  %s\n' "$KERNEL_LATEST"
+  [ ! -s "$KERNEL_LATEST/source-report.txt" ] || \
+    grep -E '^(kernel_release|kernel_source_sha|kernel_debug_info|gpu_driver|battery_driver|bootimg_cmdline)=' \
+      "$KERNEL_LATEST/source-report.txt" || true
+else
+  printf '  absent\n'
+fi
+
+printf '\nLatest Debian rootfs:\n'
+if [ -s "$BUILD_ROOT/rootfs/debian/latest" ] && \
+   [ -d "$(cat "$BUILD_ROOT/rootfs/debian/latest")" ]; then
+  ROOTFS_LATEST="$(cat "$BUILD_ROOT/rootfs/debian/latest")"
+  printf '  %s\n' "$ROOTFS_LATEST"
+  [ ! -s "$ROOTFS_LATEST/build-info.txt" ] || \
+    grep -E '^(suite|architecture|kernel_release|image_size_mib|image_free_mib|rootfs_payload_bytes|generic_qcom_firmware|ssh_host_keys|machine_id|qemu_build_helpers)=' \
+      "$ROOTFS_LATEST/build-info.txt" || true
+  if [ -s "$ROOTFS_LATEST/SHA256SUMS" ]; then
+    (cd "$ROOTFS_LATEST" && sha256sum -c SHA256SUMS >/dev/null) &&
+      printf '  checksums: OK\n' || printf '  checksums: FAILED\n'
+  fi
+else
+  printf '  absent\n'
+fi

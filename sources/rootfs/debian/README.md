@@ -10,7 +10,8 @@
    de a `userdata` ser montada.
 6. O rootfs inclui o runtime Mesa/Freedreno para OpenGL e OpenGL ES.
 7. O overlay instala USB/RNDIS, SSH, Wi-Fi, módulos e sincronização NTP.
-8. O script remove payload não utilizado, valida symlinks e gera ext4/tarball.
+8. O script remove payload não utilizado, identidades de build e helpers QEMU,
+   valida o runtime e gera ext4/tarball.
 
 ## Personalização
 
@@ -19,12 +20,17 @@ Os padrões podem ser substituídos sem alterar os arquivos versionados:
 ```bash
 SANDERS_DEBIAN_IMAGE_SIZE_MIB=1024 \
 SANDERS_ROOT_PASSWORD=sanders \
+SANDERS_DEBIAN_INCLUDE_GENERIC_QCOM_FIRMWARE=1 \
 SANDERS_NTP_SERVERS='a.st1.ntp.br b.st1.ntp.br pool.ntp.org' \
 bash sh/build.sh rootfs debian
 ```
 
 O rootfs é somente Debian arm64. A imagem espera o label `debian-root` e o
 kernel Sanders monta a `userdata` do eMMC em `/dev/mmcblk0p54`.
+
+O firmware Qualcomm genérico permanece habilitado por segurança para Venus,
+remoteproc e WCNSS. O modo `=0` é um debloat experimental e deve ser usado
+somente se esses blocos não forem necessários no teste.
 
 ## GPU Adreno 506
 

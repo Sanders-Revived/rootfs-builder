@@ -30,6 +30,7 @@ ROOTFS_LABEL="$SANDERS_ROOTFS_LABEL"
 NTP_SERVERS="$SANDERS_NTP_SERVERS"
 FALLBACK_NTP_SERVERS="$SANDERS_FALLBACK_NTP_SERVERS"
 NTP_ROOT_DISTANCE_MAX_SEC="$SANDERS_NTP_ROOT_DISTANCE_MAX_SEC"
+INCLUDE_GENERIC_QCOM_FIRMWARE="$SANDERS_DEBIAN_INCLUDE_GENERIC_QCOM_FIRMWARE"
 : "${FIRMWARE_SOURCE_DIR:?rootfs runner did not export FIRMWARE_SOURCE_DIR}"
 : "${FIRMWARE_REPOSITORY_URL:?rootfs runner did not export FIRMWARE_REPOSITORY_URL}"
 : "${FIRMWARE_REF:?rootfs runner did not export FIRMWARE_REF}"
@@ -86,9 +87,10 @@ for overlay_file in \
   etc/modules-load.d/sanders.conf \
   etc/NetworkManager/conf.d/99-usb0-unmanaged.conf \
   etc/ssh/sshd_config.d/90-sanders-root.conf \
-  etc/systemd/system/sanders-ssh-keygen.service \
+  etc/systemd/system/sanders-time-sync.service \
   etc/systemd/system/usb-gadget.service \
-  usr/local/sbin/usb-gadget.sh; do
+  usr/local/sbin/usb-gadget.sh \
+  usr/local/sbin/sanders-time-sync; do
   [ -f "$OVERLAY_DIR/$overlay_file" ] || die \
     "Runtime overlay file is missing: $OVERLAY_DIR/$overlay_file"
 done
@@ -102,6 +104,17 @@ esac
 [[ "$IMAGE_SIZE_MIB" =~ ^[0-9]+$ && "$IMAGE_SIZE_MIB" -ge 256 ]] || \
   die 'SANDERS_DEBIAN_IMAGE_SIZE_MIB must be an integer >= 256.'
 [[ "$MIN_FREE_MIB" =~ ^[0-9]+$ ]] || die 'SANDERS_DEBIAN_MIN_FREE_MIB must be an integer.'
+case "$INCLUDE_GENERIC_QCOM_FIRMWARE" in
+  0|1) ;;
+  *) die 'SANDERS_DEBIAN_INCLUDE_GENERIC_QCOM_FIRMWARE must be 0 or 1.' ;;
+esac
+
+if [ "$INCLUDE_GENERIC_QCOM_FIRMWARE" -eq 0 ]; then
+  # The generic Qualcomm firmware package is useful for Venus/remoteproc, but
+  # it is the largest optional payload. Keep it enabled for the validated
+  # default and allow an explicitly unsupported minimal image for experiments.
+  PACKAGES="${PACKAGES//firmware-qcom-soc/}"
+fi
 
 normalize_rootfs_symlinks() {
   local link target normalized
@@ -132,7 +145,8 @@ audit_rootfs_symlinks() {
 install_runtime_overlay() {
   say 'Installing Sanders runtime overlay'
   rsync -a "$OVERLAY_DIR/" "$ROOTFS_DIR/"
-  chmod 0755 "$ROOTFS_DIR/usr/local/sbin/usb-gadget.sh"
+  chmod 0755 "$ROOTFS_DIR/usr/local/sbin/usb-gadget.sh" \
+    "$ROOTFS_DIR/usr/local/sbin/sanders-time-sync"
 
   mkdir -p \
     "$ROOTFS_DIR/etc/systemd/timesyncd.conf.d" \
@@ -150,8 +164,8 @@ EOF
     "$ROOTFS_DIR/etc/systemd/system/sysinit.target.wants/systemd-timesyncd.service"
   ln -sfn ../usb-gadget.service \
     "$ROOTFS_DIR/etc/systemd/system/multi-user.target.wants/usb-gadget.service"
-  ln -sfn /lib/systemd/system/sanders-ssh-keygen.service \
-    "$ROOTFS_DIR/etc/systemd/system/multi-user.target.wants/sanders-ssh-keygen.service"
+  ln -sfn ../sanders-time-sync.service \
+    "$ROOTFS_DIR/etc/systemd/system/multi-user.target.wants/sanders-time-sync.service"
 }
 
 configure_root_password() {
@@ -180,6 +194,7 @@ sudo -n mmdebstrap \
   --variant=minbase \
   --components="$COMPONENTS" \
   --include="$PACKAGES" \
+  --skip=check/qemu \
   --setup-hook='mkdir -p "$1/usr/libexec/qemu-binfmt" && cp /usr/bin/qemu-aarch64-static "$1/usr/libexec/qemu-binfmt/aarch64-binfmt-P" && chmod 0755 "$1/usr/libexec/qemu-binfmt/aarch64-binfmt-P"' \
   --aptopt='Acquire::Languages "none"' \
   --aptopt='APT::Install-Recommends "false"' \
@@ -252,15 +267,79 @@ install_runtime_overlay
 configure_root_password
 printf 'kernel_release=%s\n' "$KERNEL_RELEASE" > "$ROOTFS_DIR/etc/sanders-kernel-release"
 
-# Keep the deployable image focused on the Sanders runtime. Documentation,
-# manuals, package caches and build-time logs are not needed for boot, Wi-Fi,
-# USB networking or SSH and only add noise to the image.
-say 'Removing nonessential Debian payload'
-rm -rf "$ROOTFS_DIR/usr/share/doc" "$ROOTFS_DIR/usr/share/man" \
-  "$ROOTFS_DIR/usr/share/info" "$ROOTFS_DIR/usr/share/lintian"
-rm -rf "$ROOTFS_DIR/var/cache/apt/archives/"* "$ROOTFS_DIR/var/log/"*
+sanitize_rootfs() {
+  # Keep the image reproducible and make SSH generate unique host keys on the
+  # first real boot. mmdebstrap runs package postinst scripts in the ARM64
+  # chroot, so those files must be removed after package installation.
+  say 'Removing build-time identities and helpers'
+  find "$ROOTFS_DIR/etc/ssh" -maxdepth 1 -type f -name 'ssh_host_*' -delete
+  rm -f "$ROOTFS_DIR/root/.bash_history" \
+    "$ROOTFS_DIR/var/lib/systemd/random-seed" \
+    "$ROOTFS_DIR/var/lib/NetworkManager/secret_key" \
+    "$ROOTFS_DIR/usr/bin/qemu-aarch64-static" \
+    "$ROOTFS_DIR/usr/libexec/qemu-binfmt/aarch64-binfmt-P"
+  : > "$ROOTFS_DIR/etc/machine-id"
+  rm -f "$ROOTFS_DIR/var/lib/dbus/machine-id"
+  ln -s /etc/machine-id "$ROOTFS_DIR/var/lib/dbus/machine-id"
 
-# fakechroot/fakeroot intentionally leaves files owned by the build user.
+  # The Adreno PM4/PFP blobs are embedded in Image.gz for pre-rootfs GPU
+  # initialization. Remove only those duplicate copies; keep generic Qualcomm
+  # firmware for Venus, remoteproc and WCNSS userspace requests.
+  rm -f "$ROOTFS_DIR/usr/lib/firmware/qcom/a530_pm4.fw" \
+    "$ROOTFS_DIR/usr/lib/firmware/qcom/a530_pfp.fw"
+
+  # Keep directories but remove caches, logs, package indexes and interpreter
+  # bytecode that can only have come from the build environment.
+  mkdir -p "$ROOTFS_DIR/tmp" "$ROOTFS_DIR/var/tmp"
+  for clean_dir in \
+    "$ROOTFS_DIR/usr/share/doc" \
+    "$ROOTFS_DIR/usr/share/man" \
+    "$ROOTFS_DIR/usr/share/info" \
+    "$ROOTFS_DIR/usr/share/lintian" \
+    "$ROOTFS_DIR/var/cache/apt/archives" \
+    "$ROOTFS_DIR/var/lib/apt/lists" \
+    "$ROOTFS_DIR/var/log" \
+    "$ROOTFS_DIR/tmp" \
+    "$ROOTFS_DIR/var/tmp"; do
+    [ -d "$clean_dir" ] || continue
+    find "$clean_dir" -mindepth 1 -delete
+  done
+  find "$ROOTFS_DIR" -xdev -type f -name '*.pyc' -delete
+  chmod 1777 "$ROOTFS_DIR/tmp" "$ROOTFS_DIR/var/tmp"
+}
+
+audit_rootfs_runtime() {
+  local required
+  for required in \
+    /sbin/init \
+    /usr/sbin/sshd \
+    /usr/sbin/NetworkManager \
+    /usr/bin/nmcli \
+    /sbin/wpa_supplicant \
+    /usr/bin/timedatectl \
+    /boot/Image.gz \
+    /boot/sanders.dtb \
+    /usr/lib/firmware/qcom/msm8953/motorola/sanders/a506_zap.mdt \
+    /usr/lib/firmware/qcom/msm8953/motorola/sanders/WCNSS_qcom_wlan_nv.bin; do
+    [ -e "$ROOTFS_DIR$required" ] || die "Required runtime file is missing: $required"
+  done
+  [ ! -e "$ROOTFS_DIR/usr/bin/qemu-aarch64-static" ] || die 'QEMU helper leaked into rootfs.'
+  [ ! -e "$ROOTFS_DIR/usr/libexec/qemu-binfmt/aarch64-binfmt-P" ] || \
+    die 'QEMU binfmt helper leaked into rootfs.'
+  if find "$ROOTFS_DIR/etc/ssh" -maxdepth 1 -type f -name 'ssh_host_*' -print -quit | grep -q .; then
+    die 'Build-time SSH host key leaked into rootfs.'
+  fi
+  [ ! -s "$ROOTFS_DIR/etc/machine-id" ] || die 'Build-time machine-id leaked into rootfs.'
+  [ -L "$ROOTFS_DIR/var/lib/dbus/machine-id" ] || die 'dbus machine-id is not a first-boot symlink.'
+  if find "$ROOTFS_DIR/var/lib/apt/lists" -mindepth 1 -print -quit | grep -q .; then
+    die 'APT indexes were not removed from rootfs.'
+  fi
+  audit_rootfs_symlinks
+}
+
+sanitize_rootfs
+audit_rootfs_runtime
+
 # Normalize ownership before creating the deployable tarball and ext4 image.
 sudo -n chown -R 0:0 "$ROOTFS_DIR"
 
@@ -287,6 +366,7 @@ SOURCE_SHA="unknown"
 [ -s "$CHECKPOINT/source-report.txt" ] && SOURCE_SHA="$(awk -F= '$1 == "kernel_source_sha" {print $2}' "$CHECKPOINT/source-report.txt")"
 PANEL="unknown"
 [ -s "$CHECKPOINT/panel.txt" ] && PANEL="$(cat "$CHECKPOINT/panel.txt")"
+ROOTFS_PAYLOAD_BYTES="$(sudo -n du -sb "$ROOTFS_DIR" | cut -f1)"
 cat > "$INFO" <<EOF
 distribution=debian
 suite=$SUITE
@@ -294,21 +374,27 @@ architecture=$ARCH
 kernel_release=$KERNEL_RELEASE
 panel=$PANEL
 kernel_source_sha=$SOURCE_SHA
-kernel_modules=$KERNEL_MODULES_ARCHIVE
+kernel_modules=cache/mainline/checkpoint/kernel-modules-$KERNEL_RELEASE.tar.zst
 firmware_repository=$FIRMWARE_REPOSITORY_URL
 firmware_ref=$FIRMWARE_REF
 firmware_source_sha=$FIRMWARE_SHA
+generic_qcom_firmware=$INCLUDE_GENERIC_QCOM_FIRMWARE
 image_size_mib=$IMAGE_SIZE_MIB
 rootfs_label=$ROOTFS_LABEL
 image_free_mib=$FREE_MIB
 image_min_free_mib=$MIN_FREE_MIB
+rootfs_payload_bytes=$ROOTFS_PAYLOAD_BYTES
 ssh_root_password_configured=yes
+ssh_host_keys=generated_on_first_boot
+machine_id=generated_on_first_boot
+qemu_build_helpers=removed
+embedded_gpu_runtime_duplicates=removed
 packages=$PACKAGES
 apt_install_recommends=no
 apt_install_suggests=no
 ntp_servers=$NTP_SERVERS
 fallback_ntp_servers=$FALLBACK_NTP_SERVERS
-runtime_overlay=$OVERLAY_DIR
+runtime_overlay=sources/rootfs/debian/overlay
 built_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 EOF
 
