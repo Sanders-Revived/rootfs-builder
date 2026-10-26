@@ -90,9 +90,10 @@ essas dependencias sozinho.
 As variaveis `SANDERS_DEBIAN_SUITE`, `SANDERS_DEBIAN_MIRROR`,
 `SANDERS_DEBIAN_PACKAGES`, `SANDERS_DEBIAN_IMAGE_SIZE_MIB` e
 `SANDERS_DEBIAN_MIN_FREE_MIB` permitem ajustar a receita. O firmware
-Qualcomm generico fica habilitado por padrao porque atende Venus/remoteproc;
-`SANDERS_DEBIAN_INCLUDE_GENERIC_QCOM_FIRMWARE=0` gera uma imagem experimental
-menor, sem essa garantia.
+Qualcomm generico fica desabilitado por padrao para evitar cerca de 305 MiB de
+imagens de outros SoCs. O kernel embute o A530 e o firmware Sanders fornece
+WCNSS/ADSP/Venus. Use `SANDERS_DEBIAN_INCLUDE_GENERIC_QCOM_FIRMWARE=1` apenas
+para investigar um firmware adicional especifico.
 
 ## Rootfs Debian
 

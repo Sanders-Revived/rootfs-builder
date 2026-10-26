@@ -115,9 +115,9 @@ esac
 [ -f "/usr/share/zoneinfo/$TIMEZONE" ] || die "Unknown timezone: $TIMEZONE"
 
 if [ "$INCLUDE_GENERIC_QCOM_FIRMWARE" -eq 0 ]; then
-  # The generic Qualcomm firmware package is useful for Venus/remoteproc, but
-  # it is the largest optional payload. Keep it enabled for the validated
-  # default and allow an explicitly unsupported minimal image for experiments.
+  # The kernel embeds A530 firmware and the Sanders firmware checkout supplies
+  # the WCNSS/ADSP/Venus images used by this device. The generic Qualcomm
+  # package is optional and contains firmware for many unrelated SoCs.
   PACKAGES="${PACKAGES//firmware-qcom-soc/}"
 fi
 

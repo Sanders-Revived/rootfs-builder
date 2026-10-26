@@ -20,8 +20,8 @@ Os padrões podem ser substituídos sem alterar os arquivos versionados:
 ```bash
 SANDERS_DEBIAN_IMAGE_SIZE_MIB=1024 \
 SANDERS_ROOT_PASSWORD=sanders \
-SANDERS_DEBIAN_INCLUDE_GENERIC_QCOM_FIRMWARE=1 \
-SANDERS_NTP_SERVERS='a.st1.ntp.br b.st1.ntp.br pool.ntp.org' \
+SANDERS_DEBIAN_INCLUDE_GENERIC_QCOM_FIRMWARE=0 \
+SANDERS_NTP_SERVERS='pool.ntp.org time.cloudflare.com time.google.com' \
 bash sh/build.sh rootfs debian
 ```
 
@@ -29,9 +29,14 @@ O rootfs é somente Debian arm64. O kernel monta a partição `userdata` pelo
 PARTUUID `c2f3b3c6-acb4-332f-fe55-920f956be79d`, sem depender do número
 atribuído ao MMC. Para outro layout, use `SANDERS_BOOT_ROOT=PARTUUID=...`.
 
-O firmware Qualcomm genérico permanece habilitado por segurança para Venus,
-remoteproc e WCNSS. O modo `=0` é um debloat experimental e deve ser usado
-somente se esses blocos não forem necessários no teste.
+O firmware Qualcomm genérico fica desabilitado por padrão para reduzir cerca
+de 305 MiB de payload de outros SoCs. O kernel já embute o firmware A530 e o
+checkout Sanders fornece WCNSS, ADSP e Venus. Use `=1` somente para investigar
+um probe que peça explicitamente um firmware genérico.
+
+O `alsa-utils` também não entra na imagem mínima; o áudio continua sendo uma
+função do kernel, mas as ferramentas de teste podem ser instaladas depois com
+`apt install alsa-utils`.
 
 ## GPU Adreno 506
 
