@@ -10,6 +10,7 @@ SANDERS MAINLINE BUILDER
   bash sh/build.sh kernel [--clean|--reuse]
   bash sh/build.sh update
   bash sh/build.sh status
+  bash sh/build.sh clean [--outputs]
   bash sh/build.sh rootfs [debian]
   bash sh/build.sh all [--clean|--reuse]
 
@@ -34,6 +35,7 @@ case "$command" in
   kernel) exec bash "$ROOT/sh/mainline/build.sh" "$@" ;;
   update) exec bash "$ROOT/sh/mainline/update-source.sh" "$@" ;;
   status) exec bash "$ROOT/sh/status.sh" "$@" ;;
+  clean) exec bash "$ROOT/sh/clean.sh" "$@" ;;
   rootfs) exec bash "$ROOT/sh/rootfs/build.sh" "$@" ;;
   all)
     case "${1:-}" in

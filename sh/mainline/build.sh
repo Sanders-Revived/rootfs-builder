@@ -24,6 +24,8 @@ Options:
 Overrides:
   SANDERS_KERNEL_URL, SANDERS_KERNEL_REF, SANDERS_KERNEL_CACHE_DIR,
   SANDERS_KERNEL_OUT, JOBS,
+  SANDERS_GPU_FIRMWARE_ROOT, SANDERS_GPU_FIRMWARE_STAGE,
+  SANDERS_GPU_FIRMWARE_SOURCE_URL,
   SANDERS_BOOT_CMDLINE, SANDERS_LK2ND_IMAGE
 EOF
 }
@@ -40,6 +42,8 @@ esac
 require_build_tools
 acquire_lock
 ensure_kernel_source
+ensure_firmware_source
+prepare_gpu_firmware
 [ -s "$LK2ND_IMAGE" ] || die "LK2ND image not found: $LK2ND_IMAGE"
 
 if [ "$mode" = reuse ]; then
@@ -74,6 +78,14 @@ say "Generating trimmed Sanders configuration from defconfig + trim + device fra
 kernel_make defconfig
 "$KERNEL_DIR/scripts/kconfig/merge_config.sh" -m -Q -O "$KERNEL_OUT" \
   "$KERNEL_OUT/.config" "$TRIM_CONFIG" "$BASE_CONFIG" "$DEVICE_CONFIG"
+kernel_make olddefconfig
+
+KCONFIG_TOOL="$KERNEL_DIR/scripts/config"
+[ -s "$KCONFIG_TOOL" ] || die "Kernel config helper is missing: $KCONFIG_TOOL"
+say "Embedding Adreno 506 firmware for early boot"
+bash "$KCONFIG_TOOL" --file "$KERNEL_OUT/.config" \
+  --set-str CONFIG_EXTRA_FIRMWARE "$GPU_EXTRA_FIRMWARE" \
+  --set-str CONFIG_EXTRA_FIRMWARE_DIR "$GPU_FIRMWARE_STAGE"
 kernel_make olddefconfig
 
 say "Compiling kernel, $PANEL_NAME DTB and modules with $JOBS jobs"
@@ -215,6 +227,9 @@ write_boot_image_info Image.gz dt.img "$STAGE/bootimg-info.txt"
   printf 'kernel_source_sha=%s\n' "$SOURCE_SHA"
   printf 'kernel_source_dirty=%s\n' "$([ -n "$SOURCE_DIRTY" ] && echo yes || echo no)"
   printf 'kernel_release=%s\n' "$KREL"
+  printf 'gpu_driver=msm-freedreno (Adreno 506)\n'
+  printf 'gpu_extra_firmware=%s\n' "$GPU_EXTRA_FIRMWARE"
+  printf 'gpu_firmware_stage=%s\n' "$GPU_FIRMWARE_STAGE"
   printf 'panel=auto (%s)\n' "$PANEL_NAME"
   printf 'bootimg_tool=%s\n' "$BOOTIMG_TOOL"
   printf 'bootimg_cmdline=%s\n' "$BOOT_CMDLINE"

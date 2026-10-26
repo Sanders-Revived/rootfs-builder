@@ -6,8 +6,11 @@
 2. `build.sh` cria o sistema mínimo com `mmdebstrap`.
 3. O checkpoint do kernel e os módulos são incorporados.
 4. O firmware Sanders é clonado do repositório Vanadium OSS e instalado.
-5. O overlay instala USB/RNDIS, SSH, Wi-Fi, módulos e sincronização NTP.
-6. O script remove payload não utilizado, valida symlinks e gera ext4/tarball.
+5. O kernel embute o firmware inicial do Adreno 506, que é requisitado antes
+   de a `userdata` ser montada.
+6. O rootfs inclui o runtime Mesa/Freedreno para OpenGL e OpenGL ES.
+7. O overlay instala USB/RNDIS, SSH, Wi-Fi, módulos e sincronização NTP.
+8. O script remove payload não utilizado, valida symlinks e gera ext4/tarball.
 
 ## Personalização
 
@@ -22,3 +25,11 @@ bash sh/build.sh rootfs debian
 
 O rootfs é somente Debian arm64. A imagem espera o label `debian-root` e o
 kernel Sanders monta a `userdata` do eMMC em `/dev/mmcblk0p54`.
+
+## GPU Adreno 506
+
+O device tree já habilita o nó `qcom,adreno-506` e o kernel usa o driver
+`DRM_MSM`. O build agora embute `a530_pm4.fw`, `a530_pfp.fw` e o ZAP shader
+`a506_zap.*` no kernel, resolvendo a falha de firmware que acontecia antes do
+mount da `userdata`. O userspace usa Mesa/Freedreno; a série A5xx não possui
+suporte Turnip/Vulkan upstream.

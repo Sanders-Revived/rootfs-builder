@@ -61,6 +61,10 @@ sudo -n true 2>/dev/null || die 'Passwordless sudo is required for ext4 image cr
   "Sanders firmware NV file is missing: $FIRMWARE_SOURCE_DIR/wlan/WCNSS_qcom_wlan_nv.bin"
 [ -d "$FIRMWARE_SOURCE_DIR/modem/image" ] || die \
   "Sanders modem firmware directory is missing: $FIRMWARE_SOURCE_DIR/modem/image"
+for zap_name in a506_zap.mdt a506_zap.b00 a506_zap.b01 a506_zap.b02; do
+  [ -s "$FIRMWARE_SOURCE_DIR/modem/image/$zap_name" ] || die \
+    "Sanders Adreno 506 firmware is missing: $FIRMWARE_SOURCE_DIR/modem/image/$zap_name"
+done
 [ -d "$OVERLAY_DIR" ] || die "Runtime overlay is missing: $OVERLAY_DIR"
 for overlay_file in \
   etc/hosts \
@@ -195,6 +199,11 @@ mkdir -p "$ROOTFS_DIR/usr/lib/firmware/postmarketos" \
   "$ROOTFS_DIR/usr/lib/firmware/wlan/prima"
 cp -a "$FIRMWARE_SOURCE_DIR/modem/image/." \
   "$ROOTFS_DIR/usr/lib/firmware/postmarketos/"
+mkdir -p "$ROOTFS_DIR/usr/lib/firmware/qcom/msm8953/motorola/sanders"
+for zap_name in a506_zap.mdt a506_zap.b00 a506_zap.b01 a506_zap.b02; do
+  cp "$FIRMWARE_SOURCE_DIR/modem/image/$zap_name" \
+    "$ROOTFS_DIR/usr/lib/firmware/qcom/msm8953/motorola/sanders/"
+done
 for firmware_path in "$FIRMWARE_SOURCE_DIR/modem/image/"*; do
   [ -f "$firmware_path" ] || continue
   firmware_name="${firmware_path##*/}"

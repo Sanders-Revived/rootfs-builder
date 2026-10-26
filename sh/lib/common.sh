@@ -13,6 +13,9 @@ KERNEL_DIR="${SANDERS_KERNEL_CACHE_DIR:-$CACHE_ROOT/sources/linux}"
 FIRMWARE_URL="${SANDERS_FIRMWARE_URL:-https://gitlab.com/vanadium-oss/motorola-msm8953/mainline/sanders-firmware.git}"
 FIRMWARE_REF="${SANDERS_FIRMWARE_REF:-main}"
 FIRMWARE_DIR="${SANDERS_FIRMWARE_CACHE_DIR:-$CACHE_ROOT/sources/sanders-firmware}"
+GPU_FIRMWARE_STAGE="${SANDERS_GPU_FIRMWARE_STAGE:-$CACHE_ROOT/mainline/gpu-firmware}"
+GPU_HOST_FIRMWARE_ROOT="${SANDERS_GPU_FIRMWARE_ROOT:-/usr/lib/firmware}"
+GPU_FIRMWARE_SOURCE_URL="${SANDERS_GPU_FIRMWARE_SOURCE_URL:-https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/plain/qcom}"
 ARCH="${ARCH:-arm64}"
 CROSS_COMPILE="${CROSS_COMPILE:-aarch64-linux-gnu-}"
 JOBS="${JOBS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)}"
@@ -111,6 +114,53 @@ ensure_firmware_source() {
     "Firmware repository has no wlan directory: $FIRMWARE_DIR"
   FIRMWARE_SHA="$(git -C "$FIRMWARE_DIR" rev-parse HEAD)"
   export FIRMWARE_SHA
+}
+
+prepare_gpu_firmware() {
+  local host_root="$GPU_HOST_FIRMWARE_ROOT"
+  local zap_source="$FIRMWARE_DIR/modem/image"
+  local required_file
+
+  for required_file in a530_pm4.fw a530_pfp.fw; do
+    if [ ! -s "$host_root/qcom/$required_file" ] && \
+       ! command -v curl >/dev/null 2>&1; then
+      die "Missing host GPU firmware and curl: $host_root/qcom/$required_file"
+    fi
+  done
+
+  for required_file in a506_zap.mdt a506_zap.b00 a506_zap.b01 a506_zap.b02; do
+    [ -s "$zap_source/$required_file" ] || die \
+      "Missing Sanders GPU firmware: $zap_source/$required_file"
+  done
+
+  # These files are requested before userdata is mounted. Stage them in a
+  # stable generated directory so the kernel can embed them in Image.gz.
+  rm -rf "$GPU_FIRMWARE_STAGE"
+  mkdir -p \
+    "$GPU_FIRMWARE_STAGE/qcom" \
+    "$GPU_FIRMWARE_STAGE/qcom/msm8953/motorola/sanders"
+  for required_file in a530_pm4.fw a530_pfp.fw; do
+    if [ -s "$host_root/qcom/$required_file" ]; then
+      cp "$host_root/qcom/$required_file" "$GPU_FIRMWARE_STAGE/qcom/"
+      continue
+    fi
+
+    command -v curl >/dev/null 2>&1 || die \
+      "Missing curl to download GPU firmware: $GPU_FIRMWARE_SOURCE_URL/$required_file"
+    say "Downloading standard GPU firmware $required_file"
+    curl -fsSL --retry 3 --connect-timeout 15 \
+      "$GPU_FIRMWARE_SOURCE_URL/$required_file" \
+      -o "$GPU_FIRMWARE_STAGE/qcom/$required_file.tmp"
+    mv "$GPU_FIRMWARE_STAGE/qcom/$required_file.tmp" \
+      "$GPU_FIRMWARE_STAGE/qcom/$required_file"
+  done
+  for required_file in a506_zap.mdt a506_zap.b00 a506_zap.b01 a506_zap.b02; do
+    cp "$zap_source/$required_file" \
+      "$GPU_FIRMWARE_STAGE/qcom/msm8953/motorola/sanders/"
+  done
+
+  GPU_EXTRA_FIRMWARE='qcom/a530_pm4.fw qcom/a530_pfp.fw qcom/msm8953/motorola/sanders/a506_zap.mdt qcom/msm8953/motorola/sanders/a506_zap.b00 qcom/msm8953/motorola/sanders/a506_zap.b01 qcom/msm8953/motorola/sanders/a506_zap.b02'
+  export GPU_EXTRA_FIRMWARE GPU_FIRMWARE_STAGE
 }
 
 kernel_make() {

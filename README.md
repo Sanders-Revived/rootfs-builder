@@ -111,6 +111,9 @@ alterada no build com `SANDERS_ROOT_PASSWORD`.
 O fragmento Sanders do kernel evita drivers que nao correspondem ao hardware
 ou ao transporte escolhido: `ath10k`, RMI4 e funcoes USB ACM/serial ficam fora;
 o Wi-Fi usa `wcn36xx`/WCNSS e o USB usa somente RNDIS.
+O Adreno 506 usa `DRM_MSM`/Freedreno: os firmwares PM4/PFP e ZAP sao
+embutidos no kernel para estarem disponiveis antes da montagem da `userdata`,
+e o Debian inclui o runtime Mesa necessario para OpenGL/OpenGL ES.
 
 ## Instalacao no aparelho
 
@@ -134,6 +137,7 @@ por isso o arquivo `boot.img` publicado e a imagem Android pura, sem padding.
 
 ```text
 sh/build.sh                  entrada principal
+sh/clean.sh                 limpeza segura de temporarios e staging
 sh/lib/common.sh             configuracao e validacoes compartilhadas
 sh/mainline/build.sh         build do kernel
 sh/mainline/update-source.sh atualizacao explicita da fonte
@@ -145,6 +149,13 @@ cache/mainline/              kernel clonado, checkpoint, modulos e ccache
 cache/rootfs/                area de trabalho descartavel do Debian
 cache/sources/               caches clonados do kernel e firmware
 sources/                     somente receita e documentacao do builder
+```
+
+Para limpar temporarios sem apagar fontes, ccache ou releases publicados:
+
+```sh
+bash sh/build.sh clean
+bash sh/build.sh clean --outputs  # tambem remove o output compilado intermediario
 ```
 
 O builder nao executa GitHub Actions, nao instala pacotes do host
