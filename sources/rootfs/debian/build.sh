@@ -18,10 +18,11 @@ SUITE="${SANDERS_DEBIAN_SUITE:-bookworm}"
 ARCH="${SANDERS_DEBIAN_ARCH:-arm64}"
 MIRROR="${SANDERS_DEBIAN_MIRROR:-http://deb.debian.org/debian}"
 COMPONENTS="${SANDERS_DEBIAN_COMPONENTS:-main,contrib,non-free,non-free-firmware}"
-PACKAGES="${SANDERS_DEBIAN_PACKAGES:-systemd-sysv udev dbus network-manager wpasupplicant iproute2 iputils-ping kmod usbutils ca-certificates locales openssh-server sudo less nano firmware-atheros firmware-qcom-soc}"
+PACKAGES="${SANDERS_DEBIAN_PACKAGES:-systemd-sysv udev dbus network-manager wpasupplicant iproute2 iputils-ping kmod ca-certificates locales openssh-server}"
 IMAGE_SIZE_MIB="${SANDERS_DEBIAN_IMAGE_SIZE_MIB:-4096}"
 MIN_FREE_MIB="${SANDERS_DEBIAN_MIN_FREE_MIB:-64}"
 ROOTFS_LABEL="${SANDERS_ROOTFS_LABEL:-debian-root}"
+: "${SANDERS_ROOT_PASSWORD:=sanders}"
 : "${FIRMWARE_SOURCE_DIR:?rootfs runner did not export FIRMWARE_SOURCE_DIR}"
 : "${FIRMWARE_REPOSITORY_URL:?rootfs runner did not export FIRMWARE_REPOSITORY_URL}"
 : "${FIRMWARE_REF:?rootfs runner did not export FIRMWARE_REF}"
@@ -238,29 +239,16 @@ EOF
 
 mkdir -p "$ROOTFS_DIR/etc/ssh/sshd_config.d"
 cat > "$ROOTFS_DIR/etc/ssh/sshd_config.d/90-sanders-root.conf" <<'EOF'
-# Enable root SSH for a locally configured test password or authorized key.
+# Sanders test image: root login is intentionally enabled for first boot.
 PermitRootLogin yes
 PasswordAuthentication yes
 EOF
 
-if [ -n "${SANDERS_ROOT_PASSWORD:-}" ]; then
-  say 'Configuring the requested root password for SSH'
-  ROOT_PASSWORD_HASH="$(printf '%s' "$SANDERS_ROOT_PASSWORD" | openssl passwd -6 -stdin)"
-  awk -F: -v hash="$ROOT_PASSWORD_HASH" 'BEGIN { OFS=FS } $1 == "root" { $2 = hash } { print }' \
-    "$ROOTFS_DIR/etc/shadow" > "$ROOTFS_DIR/etc/shadow.new"
-  mv "$ROOTFS_DIR/etc/shadow.new" "$ROOTFS_DIR/etc/shadow"
-fi
-if [ -n "${SANDERS_SSH_AUTHORIZED_KEY_FILE:-}" ]; then
-  [ -s "$SANDERS_SSH_AUTHORIZED_KEY_FILE" ] || die \
-    "SSH authorized-key file is missing: $SANDERS_SSH_AUTHORIZED_KEY_FILE"
-  SANDERS_SSH_AUTHORIZED_KEY="$(cat "$SANDERS_SSH_AUTHORIZED_KEY_FILE")"
-fi
-if [ -n "${SANDERS_SSH_AUTHORIZED_KEY:-}" ]; then
-  say 'Installing the requested root SSH authorized key'
-  install -d -m 0700 "$ROOTFS_DIR/root/.ssh"
-  printf '%s\n' "$SANDERS_SSH_AUTHORIZED_KEY" > "$ROOTFS_DIR/root/.ssh/authorized_keys"
-  chmod 0600 "$ROOTFS_DIR/root/.ssh/authorized_keys"
-fi
+say 'Configuring the root SSH password'
+ROOT_PASSWORD_HASH="$(printf '%s' "$SANDERS_ROOT_PASSWORD" | openssl passwd -6 -stdin)"
+awk -F: -v hash="$ROOT_PASSWORD_HASH" 'BEGIN { OFS=FS } $1 == "root" { $2 = hash } { print }' \
+  "$ROOTFS_DIR/etc/shadow" > "$ROOTFS_DIR/etc/shadow.new"
+mv "$ROOTFS_DIR/etc/shadow.new" "$ROOTFS_DIR/etc/shadow"
 ln -sfn /lib/systemd/system/ssh.service \
   "$ROOTFS_DIR/etc/systemd/system/multi-user.target.wants/ssh.service"
 
@@ -284,6 +272,14 @@ mkdir -p "$ROOTFS_DIR/etc/systemd/system/multi-user.target.wants"
 ln -sfn ../usb-gadget.service \
   "$ROOTFS_DIR/etc/systemd/system/multi-user.target.wants/usb-gadget.service"
 printf 'kernel_release=%s\n' "$KERNEL_RELEASE" > "$ROOTFS_DIR/etc/sanders-kernel-release"
+
+# Keep the deployable image focused on the Sanders runtime. Documentation,
+# manuals, package caches and build-time logs are not needed for boot, Wi-Fi,
+# USB networking or SSH and only add noise to the image.
+say 'Removing nonessential Debian payload'
+rm -rf "$ROOTFS_DIR/usr/share/doc" "$ROOTFS_DIR/usr/share/man" \
+  "$ROOTFS_DIR/usr/share/info" "$ROOTFS_DIR/usr/share/lintian"
+rm -rf "$ROOTFS_DIR/var/cache/apt/archives/"* "$ROOTFS_DIR/var/log/"*
 
 # fakechroot/fakeroot intentionally leaves files owned by the build user.
 # Normalize ownership before creating the deployable tarball and ext4 image.
@@ -324,8 +320,7 @@ image_size_mib=$IMAGE_SIZE_MIB
 rootfs_label=$ROOTFS_LABEL
 image_free_mib=$FREE_MIB
 image_min_free_mib=$MIN_FREE_MIB
-ssh_root_password_configured=$([ -n "${SANDERS_ROOT_PASSWORD:-}" ] && printf yes || printf no)
-ssh_authorized_key_configured=$([ -n "${SANDERS_SSH_AUTHORIZED_KEY:-}" ] || [ -n "${SANDERS_SSH_AUTHORIZED_KEY_FILE:-}" ] && printf yes || printf no)
+ssh_root_password_configured=yes
 packages=$PACKAGES
 built_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 EOF

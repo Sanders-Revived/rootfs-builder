@@ -30,14 +30,6 @@ KREL="$(ensure_checkpoint)"
 RECIPE="$ROOT/sources/rootfs/debian/build.sh"
 [ -s "$RECIPE" ] || die "Debian recipe is missing: $RECIPE"
 
-# Keep SSH available for headless Sanders boots without hard-coding a host
-# path in the recipe. The key is copied into the image; the cache and source
-# tree remain free of credentials.
-if [ -z "${SANDERS_SSH_AUTHORIZED_KEY_FILE:-}" ] && \
-   [ -s "${HOME:-}/.ssh/id_ed25519.pub" ]; then
-  export SANDERS_SSH_AUTHORIZED_KEY_FILE="$HOME/.ssh/id_ed25519.pub"
-fi
-
 OUT_DIR="$CACHE_ROOT/rootfs/$DISTRO/out"
 WORK_DIR="$CACHE_ROOT/rootfs/$DISTRO/work"
 mkdir -p "$OUT_DIR" "$WORK_DIR" "$BUILD_ROOT/rootfs/$DISTRO"

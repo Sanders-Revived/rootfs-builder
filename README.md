@@ -103,9 +103,12 @@ O kernel e seus modulos sao expostos a receita por variaveis como
 `KERNEL_RELEASE`, `KERNEL_MODULES_ARCHIVE`, `KERNEL_CONFIG_FILE` e
 `KERNEL_SYSTEM_MAP_FILE`. O firmware e exposto por
 `FIRMWARE_SOURCE_DIR`, `FIRMWARE_REF` e `FIRMWARE_SHA`.
-Quando existe, `~/.ssh/id_ed25519.pub` e copiada automaticamente para
-`root/.ssh/authorized_keys`; use `SANDERS_SSH_AUTHORIZED_KEY_FILE` para indicar
-outra chave.
+O rootfs usa a senha inicial `sanders` para o usuario `root`; ela pode ser
+alterada no build com `SANDERS_ROOT_PASSWORD`.
+
+O fragmento Sanders do kernel evita drivers que nao correspondem ao hardware
+ou ao transporte escolhido: `ath10k`, RMI4 e funcoes USB ACM/serial ficam fora;
+o Wi-Fi usa `wcn36xx`/WCNSS e o USB usa somente RNDIS.
 
 ## Instalacao no aparelho
 
