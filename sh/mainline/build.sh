@@ -74,17 +74,20 @@ fi
 BASE_CONFIG="$KERNEL_DIR/arch/$ARCH/configs/msm8953.config"
 DEVICE_CONFIG="$KERNEL_DIR/arch/$ARCH/configs/motorola-sanders.config"
 TRIM_CONFIG="$KERNEL_DIR/arch/$ARCH/configs/no-unused-drivers.config"
+CONTAINER_CONFIG="$ROOT/sources/mainline/coolify-containers.config"
 PANEL_NAME='automatic (lk2nd mdss_mdp.panel)'
 PANEL_DTB_TARGET='qcom/msm8953-motorola-sanders.dtb'
 PANEL_DTB_FILE='msm8953-motorola-sanders.dtb'
 [ -s "$BASE_CONFIG" ] || die "Missing config fragment: $BASE_CONFIG"
 [ -s "$DEVICE_CONFIG" ] || die "Missing config fragment: $DEVICE_CONFIG"
 [ -s "$TRIM_CONFIG" ] || die "Missing trim fragment: $TRIM_CONFIG"
+[ -s "$CONTAINER_CONFIG" ] || die "Missing container config fragment: $CONTAINER_CONFIG"
 
 say "Generating trimmed Sanders configuration from defconfig + trim + device fragments"
 kernel_make defconfig
 "$KERNEL_DIR/scripts/kconfig/merge_config.sh" -m -Q -O "$KERNEL_OUT" \
-  "$KERNEL_OUT/.config" "$TRIM_CONFIG" "$BASE_CONFIG" "$DEVICE_CONFIG"
+  "$KERNEL_OUT/.config" "$TRIM_CONFIG" "$BASE_CONFIG" "$DEVICE_CONFIG" \
+  "$CONTAINER_CONFIG"
 kernel_make olddefconfig
 
 KCONFIG_TOOL="$KERNEL_DIR/scripts/config"
