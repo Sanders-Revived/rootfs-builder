@@ -25,8 +25,9 @@ SANDERS_NTP_SERVERS='a.st1.ntp.br b.st1.ntp.br pool.ntp.org' \
 bash sh/build.sh rootfs debian
 ```
 
-O rootfs é somente Debian arm64. A imagem usa o label `debian-root`; o kernel
-monta a partição `userdata` sem depender do número atribuído ao MMC.
+O rootfs é somente Debian arm64. Com o SD inserido, o kernel monta a partição
+`userdata` interna em `/dev/mmcblk1p53`; sem SD, use
+`SANDERS_BOOT_ROOT=/dev/mmcblk0p53` ao gerar o boot.
 
 O firmware Qualcomm genérico permanece habilitado por segurança para Venus,
 remoteproc e WCNSS. O modo `=0` é um debloat experimental e deve ser usado
