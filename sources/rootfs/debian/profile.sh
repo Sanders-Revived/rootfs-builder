@@ -16,8 +16,6 @@
 : "${SANDERS_DEBIAN_MIN_FREE_MIB:=64}"
 : "${SANDERS_ROOTFS_LABEL:=debian-root}"
 : "${SANDERS_ROOT_PASSWORD:=sanders}"
-: "${SANDERS_LIGHT_PASSWORD:=123}"
-: "${SANDERS_ADMIN_PUBKEY_FILE:=${HOME:-/home/light}/.ssh/id_ed25519.pub}"
 : "${SANDERS_TIMEZONE:=America/Sao_Paulo}"
 
 # The phone has no battery-backed RTC. Prefer globally reachable servers;

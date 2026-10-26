@@ -20,17 +20,10 @@ Os padrões podem ser substituídos sem alterar os arquivos versionados:
 ```bash
 SANDERS_DEBIAN_IMAGE_SIZE_MIB=1024 \
 SANDERS_ROOT_PASSWORD=sanders \
-SANDERS_LIGHT_PASSWORD=123 \
-SANDERS_ADMIN_PUBKEY_FILE="$HOME/.ssh/id_ed25519.pub" \
 SANDERS_DEBIAN_INCLUDE_GENERIC_QCOM_FIRMWARE=0 \
 SANDERS_NTP_SERVERS='pool.ntp.org time.cloudflare.com time.google.com' \
 bash sh/build.sh rootfs debian
 ```
-
-O acesso SSH e somente por chave. O build cria light com a chave publica
-fornecida, instala a mesma chave para o root, bloqueia a senha do root e
-desativa PasswordAuthentication. A senha 123 de light existe apenas
-para uso local/recovery e pode ser trocada por SANDERS_LIGHT_PASSWORD.
 
 O rootfs é somente Debian arm64. O kernel monta a partição `userdata` pelo
 PARTUUID `c2f3b3c6-acb4-332f-fe55-920f956be79d`, sem depender do número
