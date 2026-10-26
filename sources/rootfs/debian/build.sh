@@ -73,6 +73,7 @@ for overlay_file in \
   etc/modules-load.d/sanders.conf \
   etc/NetworkManager/conf.d/99-usb0-unmanaged.conf \
   etc/ssh/sshd_config.d/90-sanders-root.conf \
+  etc/systemd/system/sanders-ssh-keygen.service \
   etc/systemd/system/usb-gadget.service \
   usr/local/sbin/usb-gadget.sh; do
   [ -f "$OVERLAY_DIR/$overlay_file" ] || die \
@@ -140,6 +141,8 @@ EOF
     "$ROOTFS_DIR/etc/systemd/system/sysinit.target.wants/systemd-timesyncd.service"
   ln -sfn ../usb-gadget.service \
     "$ROOTFS_DIR/etc/systemd/system/multi-user.target.wants/usb-gadget.service"
+  ln -sfn /lib/systemd/system/sanders-ssh-keygen.service \
+    "$ROOTFS_DIR/etc/systemd/system/multi-user.target.wants/sanders-ssh-keygen.service"
 }
 
 configure_root_password() {
@@ -159,6 +162,17 @@ mkdir -p "$ROOTFS_DIR" "$STAGE"
 trap 'sudo -n rm -rf "$ROOTFS_DIR" "$STAGE"' EXIT
 
 say "Bootstrapping Debian $SUITE/$ARCH with fakechroot + qemu"
+# Debian Trixie's openssh-server postinst runs the target sshd with `-G` while
+# configuring the package. On WSL's qemu binfmt wrapper that direct exec can
+# lose QEMU_LD_PREFIX even though the rest of mmdebstrap is working. Replace
+# only that bootstrap-time probe with the host-side true(1); the real target
+# sshd and host keys are initialized by the first-boot unit below.
+FAKECHROOT_CMD_SUBST="${FAKECHROOT_CMD_SUBST:-}"
+case ":$FAKECHROOT_CMD_SUBST:" in
+  *:/usr/sbin/sshd=/bin/true:*) ;;
+  *) FAKECHROOT_CMD_SUBST="${FAKECHROOT_CMD_SUBST:+$FAKECHROOT_CMD_SUBST:}/usr/sbin/sshd=/bin/true" ;;
+esac
+export FAKECHROOT_CMD_SUBST
 mmdebstrap \
   --mode=fakechroot \
   --format=directory \

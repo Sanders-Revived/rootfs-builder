@@ -88,6 +88,12 @@ bash "$KCONFIG_TOOL" --file "$KERNEL_OUT/.config" \
   --set-str CONFIG_EXTRA_FIRMWARE_DIR "$GPU_FIRMWARE_STAGE"
 kernel_make olddefconfig
 
+say "Enabling native PM8953 battery and charger support"
+bash "$KCONFIG_TOOL" --file "$KERNEL_OUT/.config" \
+  --enable CONFIG_BATTERY_PMI8994_FG \
+  --enable CONFIG_CHARGER_QCOM_SMBCHG
+kernel_make olddefconfig
+
 say "Compiling kernel, $PANEL_NAME DTB and modules with $JOBS jobs"
 kernel_make -j"$JOBS" Image.gz modules "$PANEL_DTB_TARGET"
 
@@ -230,6 +236,8 @@ write_boot_image_info Image.gz dt.img "$STAGE/bootimg-info.txt"
   printf 'gpu_driver=msm-freedreno (Adreno 506)\n'
   printf 'gpu_extra_firmware=%s\n' "$GPU_EXTRA_FIRMWARE"
   printf 'gpu_firmware_stage=%s\n' "$GPU_FIRMWARE_STAGE"
+  printf 'battery_driver=pmi8996-fg (CONFIG_BATTERY_PMI8994_FG=y)\n'
+  printf 'charger_driver=qcom-smbchg (qcom,pmi8950-smbchg; CONFIG_CHARGER_QCOM_SMBCHG=y)\n'
   printf 'panel=auto (%s)\n' "$PANEL_NAME"
   printf 'bootimg_tool=%s\n' "$BOOTIMG_TOOL"
   printf 'bootimg_cmdline=%s\n' "$BOOT_CMDLINE"
