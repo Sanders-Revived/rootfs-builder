@@ -28,8 +28,8 @@ fi
 if [ -s "$CHECKPOINT/kernel-release.txt" ]; then
   printf 'Checkpoint: %s (%s)\n' "$CHECKPOINT" "$(cat "$CHECKPOINT/kernel-release.txt")"
   [ ! -s "$CHECKPOINT/source-report.txt" ] || sed -n '1,20p' "$CHECKPOINT/source-report.txt"
-  if grep -q 'root=/dev/mmcblk0p54' "$CHECKPOINT/bootimg-info.txt" 2>/dev/null; then
-    printf 'Root device: eMMC /dev/mmcblk0p54\n'
+  if grep -q 'root=LABEL=debian-root' "$CHECKPOINT/bootimg-info.txt" 2>/dev/null; then
+    printf 'Root device: ext4 label debian-root (MMC-number independent)\n'
   else
     printf 'Root device: STALE (rebuild kernel checkpoint)\n'
   fi

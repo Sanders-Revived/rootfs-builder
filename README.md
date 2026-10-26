@@ -52,10 +52,10 @@ base `0x80000000`, offset do kernel `0x8000`, tags `0x100`, `Image.gz` puro e
 uma tabela Qualcomm QCDT v2 no campo DT da imagem. Os IDs QCDT identificam a
 placa; o painel é identificado separadamente pelo parâmetro `mdss_mdp.panel`.
 
-As imagens nao usam ramdisk: no Sanders, `system` e `mmcblk0p53` e
-`userdata` e `mmcblk0p54`. O eMMC aparece como `mmcblk0` neste kernel; o SD
-removivel aparece como `mmcblk1`, portanto o boot usa `/dev/mmcblk0p54` como
-root da imagem Debian.
+As imagens nao usam ramdisk. A userdata é gravada pela partição fastboot
+`userdata`, mas o nome Linux do MMC pode mudar quando há um SD inserido (nos
+logs do Sanders o SD apareceu como `mmcblk0` e o eMMC como `mmcblk1`). Por isso
+o boot usa o label ext4 `debian-root`, e não um `/dev/mmcblkXpY` fixo.
 O caminho DRM/MSM, os helpers KMS, o backlight e os dois drivers de painel
 Sanders sao built-in no kernel; assim o display nao depende de carregar modulo
 depois que o Debian monta o rootfs.

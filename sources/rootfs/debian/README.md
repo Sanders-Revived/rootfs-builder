@@ -25,8 +25,8 @@ SANDERS_NTP_SERVERS='a.st1.ntp.br b.st1.ntp.br pool.ntp.org' \
 bash sh/build.sh rootfs debian
 ```
 
-O rootfs é somente Debian arm64. A imagem espera o label `debian-root` e o
-kernel Sanders monta a `userdata` do eMMC em `/dev/mmcblk0p54`.
+O rootfs é somente Debian arm64. A imagem usa o label `debian-root`; o kernel
+monta a partição `userdata` sem depender do número atribuído ao MMC.
 
 O firmware Qualcomm genérico permanece habilitado por segurança para Venus,
 remoteproc e WCNSS. O modo `=0` é um debloat experimental e deve ser usado

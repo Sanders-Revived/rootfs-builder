@@ -191,7 +191,7 @@ PY
 validate_qcdt "$STAGE/dt.img"
 cat "$IMAGE" "$DTB" > "$STAGE/Image.gz-dtb"
 
-BOOT_ROOT="${SANDERS_BOOT_ROOT:-/dev/mmcblk0p54}"
+BOOT_ROOT="${SANDERS_BOOT_ROOT:-LABEL=debian-root}"
 BOOT_CMDLINE="${SANDERS_BOOT_CMDLINE:-console=tty0 root=$BOOT_ROOT rootfstype=ext4 rw rootwait panic=10 fsck.repair=yes lpm_levels.sleep_disabled=1 msm.prefer_mdp5=true clk_ignore_unused pd_ignore_unused rootdelay=10}"
 BOOT_IMAGE="$STAGE/boot.img"
 
@@ -303,7 +303,7 @@ say "Release: $RELEASE"
 say "Checkpoint: $CHECKPOINT"
 say "Android boot image: $RELEASE/boot.img ($PANEL_NAME)"
 say "LK2ND: $RELEASE/lk2nd.img (flash to the lk2nd partition, not boot)"
-say 'The boot image requires LK2ND and boots the ext4 rootfs from eMMC /dev/mmcblk0p54 (userdata).'
+say 'The boot image requires LK2ND and boots the ext4 rootfs by label debian-root from userdata.'
 if [ -n "$SOURCE_DIRTY" ]; then
   say 'WARNING: the kernel checkout had uncommitted changes; see source-report.txt.'
 fi
