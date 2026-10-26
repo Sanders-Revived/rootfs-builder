@@ -7,7 +7,8 @@ printf 'Kernel URL:   %s\n' "$KERNEL_URL"
 printf 'Kernel cache: %s\n' "$KERNEL_DIR"
 if [ -d "$KERNEL_DIR/.git" ]; then
   printf 'Commit:       %s\n' "$(git -C "$KERNEL_DIR" rev-parse --short HEAD)"
-  if [ -n "$(git -C "$KERNEL_DIR" status --porcelain --untracked-files=all)" ]; then
+  if ! git -C "$KERNEL_DIR" diff --quiet || \
+     ! git -C "$KERNEL_DIR" diff --cached --quiet; then
     printf 'Source:  dirty\n'
   else
     printf 'Source:  clean\n'
@@ -27,6 +28,11 @@ fi
 if [ -s "$CHECKPOINT/kernel-release.txt" ]; then
   printf 'Checkpoint: %s (%s)\n' "$CHECKPOINT" "$(cat "$CHECKPOINT/kernel-release.txt")"
   [ ! -s "$CHECKPOINT/source-report.txt" ] || sed -n '1,20p' "$CHECKPOINT/source-report.txt"
+  if grep -q 'root=/dev/mmcblk0p54' "$CHECKPOINT/bootimg-info.txt" 2>/dev/null; then
+    printf 'Root device: eMMC /dev/mmcblk0p54\n'
+  else
+    printf 'Root device: STALE (rebuild kernel checkpoint)\n'
+  fi
 else
   printf 'Checkpoint: absent\n'
 fi

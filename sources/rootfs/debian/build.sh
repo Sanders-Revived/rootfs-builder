@@ -14,15 +14,22 @@ set -Eeuo pipefail
 say() { printf '\n[debian] %s\n' "$*"; }
 die() { printf '\nERROR [debian]: %s\n' "$*" >&2; exit 1; }
 
-SUITE="${SANDERS_DEBIAN_SUITE:-bookworm}"
-ARCH="${SANDERS_DEBIAN_ARCH:-arm64}"
-MIRROR="${SANDERS_DEBIAN_MIRROR:-http://deb.debian.org/debian}"
-COMPONENTS="${SANDERS_DEBIAN_COMPONENTS:-main,contrib,non-free,non-free-firmware}"
-PACKAGES="${SANDERS_DEBIAN_PACKAGES:-systemd-sysv udev dbus network-manager wpasupplicant iproute2 iputils-ping kmod ca-certificates locales openssh-server}"
-IMAGE_SIZE_MIB="${SANDERS_DEBIAN_IMAGE_SIZE_MIB:-1024}"
-MIN_FREE_MIB="${SANDERS_DEBIAN_MIN_FREE_MIB:-64}"
-ROOTFS_LABEL="${SANDERS_ROOTFS_LABEL:-debian-root}"
-: "${SANDERS_ROOT_PASSWORD:=sanders}"
+PROFILE="$ROOT/sources/rootfs/debian/profile.sh"
+[ -r "$PROFILE" ] || die "Debian profile is missing: $PROFILE"
+# Keep policy/configuration in profile.sh and assembly logic in this recipe.
+source "$PROFILE"
+
+SUITE="$SANDERS_DEBIAN_SUITE"
+ARCH="$SANDERS_DEBIAN_ARCH"
+MIRROR="$SANDERS_DEBIAN_MIRROR"
+COMPONENTS="$SANDERS_DEBIAN_COMPONENTS"
+PACKAGES="$SANDERS_DEBIAN_PACKAGES"
+IMAGE_SIZE_MIB="$SANDERS_DEBIAN_IMAGE_SIZE_MIB"
+MIN_FREE_MIB="$SANDERS_DEBIAN_MIN_FREE_MIB"
+ROOTFS_LABEL="$SANDERS_ROOTFS_LABEL"
+NTP_SERVERS="$SANDERS_NTP_SERVERS"
+FALLBACK_NTP_SERVERS="$SANDERS_FALLBACK_NTP_SERVERS"
+NTP_ROOT_DISTANCE_MAX_SEC="$SANDERS_NTP_ROOT_DISTANCE_MAX_SEC"
 : "${FIRMWARE_SOURCE_DIR:?rootfs runner did not export FIRMWARE_SOURCE_DIR}"
 : "${FIRMWARE_REPOSITORY_URL:?rootfs runner did not export FIRMWARE_REPOSITORY_URL}"
 : "${FIRMWARE_REF:?rootfs runner did not export FIRMWARE_REF}"
@@ -33,6 +40,7 @@ WORK_ROOT="$CACHE_ROOT/rootfs/debian"
 ROOTFS_DIR="$WORK_ROOT/rootfs"
 STAGE="$WORK_ROOT/.stage-$$"
 RELEASES="$OUT_DIR/releases"
+OVERLAY_DIR="$ROOT/sources/rootfs/debian/overlay"
 
 require_commands() {
   local missing=() command_name
@@ -53,6 +61,19 @@ sudo -n true 2>/dev/null || die 'Passwordless sudo is required for ext4 image cr
   "Sanders firmware NV file is missing: $FIRMWARE_SOURCE_DIR/wlan/WCNSS_qcom_wlan_nv.bin"
 [ -d "$FIRMWARE_SOURCE_DIR/modem/image" ] || die \
   "Sanders modem firmware directory is missing: $FIRMWARE_SOURCE_DIR/modem/image"
+[ -d "$OVERLAY_DIR" ] || die "Runtime overlay is missing: $OVERLAY_DIR"
+for overlay_file in \
+  etc/hosts \
+  etc/fstab \
+  etc/modprobe.d/sanders.conf \
+  etc/modules-load.d/sanders.conf \
+  etc/NetworkManager/conf.d/99-usb0-unmanaged.conf \
+  etc/ssh/sshd_config.d/90-sanders-root.conf \
+  etc/systemd/system/usb-gadget.service \
+  usr/local/sbin/usb-gadget.sh; do
+  [ -f "$OVERLAY_DIR/$overlay_file" ] || die \
+    "Runtime overlay file is missing: $OVERLAY_DIR/$overlay_file"
+done
 [ -s "$CHECKPOINT/Image.gz" ] || die 'Checkpoint Image.gz is missing.'
 [ -s "$CHECKPOINT/sanders.dtb" ] || die 'Checkpoint Sanders DTB is missing.'
 [ -s /usr/lib/aarch64-linux-gnu/fakechroot/libfakechroot.so ] || die \
@@ -94,6 +115,40 @@ audit_rootfs_symlinks() {
   done < <(find "$ROOTFS_DIR" -type l -print0)
 }
 
+install_runtime_overlay() {
+  say 'Installing Sanders runtime overlay'
+  rsync -a "$OVERLAY_DIR/" "$ROOTFS_DIR/"
+  chmod 0755 "$ROOTFS_DIR/usr/local/sbin/usb-gadget.sh"
+
+  mkdir -p \
+    "$ROOTFS_DIR/etc/systemd/timesyncd.conf.d" \
+    "$ROOTFS_DIR/etc/systemd/system/sysinit.target.wants" \
+    "$ROOTFS_DIR/etc/systemd/system/multi-user.target.wants"
+
+  cat > "$ROOTFS_DIR/etc/systemd/timesyncd.conf.d/sanders.conf" <<EOF
+[Time]
+NTP=$NTP_SERVERS
+FallbackNTP=$FALLBACK_NTP_SERVERS
+RootDistanceMaxSec=$NTP_ROOT_DISTANCE_MAX_SEC
+EOF
+
+  ln -sfn /lib/systemd/system/systemd-timesyncd.service \
+    "$ROOTFS_DIR/etc/systemd/system/sysinit.target.wants/systemd-timesyncd.service"
+  ln -sfn ../usb-gadget.service \
+    "$ROOTFS_DIR/etc/systemd/system/multi-user.target.wants/usb-gadget.service"
+}
+
+configure_root_password() {
+  say 'Configuring the root SSH password'
+  local root_password_hash
+  root_password_hash="$(printf '%s' "$SANDERS_ROOT_PASSWORD" | openssl passwd -6 -stdin)"
+  awk -F: -v hash="$root_password_hash" 'BEGIN { OFS=FS } $1 == "root" { $2 = hash } { print }' \
+    "$ROOTFS_DIR/etc/shadow" > "$ROOTFS_DIR/etc/shadow.new"
+  mv "$ROOTFS_DIR/etc/shadow.new" "$ROOTFS_DIR/etc/shadow"
+  ln -sfn /lib/systemd/system/ssh.service \
+    "$ROOTFS_DIR/etc/systemd/system/multi-user.target.wants/ssh.service"
+}
+
 mkdir -p "$OUT_DIR" "$RELEASES" "$WORK_ROOT"
 sudo -n rm -rf "$ROOTFS_DIR" "$STAGE"
 mkdir -p "$ROOTFS_DIR" "$STAGE"
@@ -108,6 +163,8 @@ mmdebstrap \
   --components="$COMPONENTS" \
   --include="$PACKAGES" \
   --aptopt='Acquire::Languages "none"' \
+  --aptopt='APT::Install-Recommends "false"' \
+  --aptopt='APT::Install-Suggests "false"' \
   "$SUITE" "$ROOTFS_DIR" "$MIRROR"
 
 # fakechroot can leak the host-side fake root into absolute symlinks created by
@@ -163,112 +220,8 @@ ln -sfn "Image.gz-$KERNEL_RELEASE" "$ROOTFS_DIR/boot/Image.gz"
 ln -sfn "Image.gz-$KERNEL_RELEASE" "$ROOTFS_DIR/boot/vmlinuz"
 
 printf '%s\n' sanders > "$ROOTFS_DIR/etc/hostname"
-cat > "$ROOTFS_DIR/etc/hosts" <<'EOF'
-127.0.0.1 localhost
-127.0.1.1 sanders
-::1 localhost ip6-localhost ip6-loopback
-EOF
-cat > "$ROOTFS_DIR/etc/fstab" <<'EOF'
-LABEL=debian-root / ext4 defaults 0 1
-EOF
-cat > "$ROOTFS_DIR/etc/modprobe.d/sanders.conf" <<'EOF'
-# Sanders mainline modules are installed from the matching kernel checkpoint.
-EOF
-mkdir -p "$ROOTFS_DIR/etc/modules-load.d"
-cat > "$ROOTFS_DIR/etc/modules-load.d/sanders.conf" <<'EOF'
-# The WCNSS child is not always auto-loaded from the legacy qcom,wcnss node.
-qcom_wcnss_pil
-wcn36xx
-EOF
-
-# Expose the same USB RNDIS network used by the donor image. Keeping the
-# gadget RNDIS-only is important on Sanders: adding ACM can prevent the USB
-# device from enumerating consistently, which also removes the SSH transport.
-mkdir -p "$ROOTFS_DIR/usr/local/sbin" "$ROOTFS_DIR/etc/systemd/system"
-cat > "$ROOTFS_DIR/usr/local/sbin/usb-gadget.sh" <<'EOF'
-#!/bin/sh
-set -e
-
-G=/sys/kernel/config/usb_gadget/sanders
-mount -t configfs none /sys/kernel/config 2>/dev/null || true
-mkdir -p "$G/strings/0x409" "$G/functions/rndis.usb0" \
-  "$G/functions/rndis.usb0/os_desc/interface.rndis" \
-  "$G/configs/c.1/strings/0x409" "$G/os_desc"
-echo 0x05c6 > "$G/idVendor"
-echo 0x90db > "$G/idProduct"
-# Advertise the USB composite/IAD class used by Windows' inbox RNDIS INF.
-# Without this, Windows sees the RNDIS interface as an unknown 02/06/00
-# device and leaves it at Code 28 even though netrndis.inf is installed.
-echo 0xef > "$G/bDeviceClass"
-echo 0x04 > "$G/bDeviceSubClass"
-echo 0x01 > "$G/bDeviceProtocol"
-echo sanders > "$G/strings/0x409/manufacturer"
-echo sanders > "$G/strings/0x409/product"
-echo 42:61:6e:64:65:72 > "$G/functions/rndis.usb0/host_addr"
-echo 42:61:6e:64:65:73 > "$G/functions/rndis.usb0/dev_addr"
-echo rndis > "$G/configs/c.1/strings/0x409/configuration"
-# Publish the Microsoft OS descriptor that makes Windows bind its built-in
-# Remote NDIS driver instead of leaving the interface as an unknown device.
-echo 1 > "$G/os_desc/use"
-echo 0xcd > "$G/os_desc/b_vendor_code"
-echo MSFT100 > "$G/os_desc/qw_sign"
-echo RNDIS > "$G/functions/rndis.usb0/os_desc/interface.rndis/compatible_id"
-echo 5162001 > "$G/functions/rndis.usb0/os_desc/interface.rndis/sub_compatible_id"
-ln -sfn "$G/functions/rndis.usb0" "$G/configs/c.1/"
-ln -sfn "$G/configs/c.1" "$G/os_desc/"
-
-for i in $(seq 1 30); do
-    UDC=$(ls /sys/class/udc/ 2>/dev/null | head -n 1)
-    [ -n "$UDC" ] && break
-    sleep 1
-done
-[ -n "${UDC:-}" ] || { echo no-udc >&2; exit 1; }
-echo "$UDC" > "$G/UDC"
-ip addr add 172.16.42.1/24 dev usb0 2>/dev/null || true
-ip link set usb0 up 2>/dev/null || true
-EOF
-chmod 0755 "$ROOTFS_DIR/usr/local/sbin/usb-gadget.sh"
-
-mkdir -p "$ROOTFS_DIR/etc/NetworkManager/conf.d"
-cat > "$ROOTFS_DIR/etc/NetworkManager/conf.d/99-usb0-unmanaged.conf" <<'EOF'
-[keyfile]
-unmanaged-devices=interface-name:usb0
-EOF
-
-mkdir -p "$ROOTFS_DIR/etc/ssh/sshd_config.d"
-cat > "$ROOTFS_DIR/etc/ssh/sshd_config.d/90-sanders-root.conf" <<'EOF'
-# Sanders test image: root login is intentionally enabled for first boot.
-PermitRootLogin yes
-PasswordAuthentication yes
-EOF
-
-say 'Configuring the root SSH password'
-ROOT_PASSWORD_HASH="$(printf '%s' "$SANDERS_ROOT_PASSWORD" | openssl passwd -6 -stdin)"
-awk -F: -v hash="$ROOT_PASSWORD_HASH" 'BEGIN { OFS=FS } $1 == "root" { $2 = hash } { print }' \
-  "$ROOTFS_DIR/etc/shadow" > "$ROOTFS_DIR/etc/shadow.new"
-mv "$ROOTFS_DIR/etc/shadow.new" "$ROOTFS_DIR/etc/shadow"
-ln -sfn /lib/systemd/system/ssh.service \
-  "$ROOTFS_DIR/etc/systemd/system/multi-user.target.wants/ssh.service"
-
-cat > "$ROOTFS_DIR/etc/systemd/system/usb-gadget.service" <<'EOF'
-[Unit]
-Description=USB gadget networking
-After=sysinit.target
-
-[Service]
-Type=oneshot
-ExecStart=/usr/local/sbin/usb-gadget.sh
-RemainAfterExit=yes
-Restart=on-failure
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-mkdir -p "$ROOTFS_DIR/etc/systemd/system/multi-user.target.wants"
-ln -sfn ../usb-gadget.service \
-  "$ROOTFS_DIR/etc/systemd/system/multi-user.target.wants/usb-gadget.service"
+install_runtime_overlay
+configure_root_password
 printf 'kernel_release=%s\n' "$KERNEL_RELEASE" > "$ROOTFS_DIR/etc/sanders-kernel-release"
 
 # Keep the deployable image focused on the Sanders runtime. Documentation,
@@ -323,6 +276,11 @@ image_free_mib=$FREE_MIB
 image_min_free_mib=$MIN_FREE_MIB
 ssh_root_password_configured=yes
 packages=$PACKAGES
+apt_install_recommends=no
+apt_install_suggests=no
+ntp_servers=$NTP_SERVERS
+fallback_ntp_servers=$FALLBACK_NTP_SERVERS
+runtime_overlay=$OVERLAY_DIR
 built_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 EOF
 

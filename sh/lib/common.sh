@@ -66,9 +66,11 @@ ensure_kernel_source() {
     git clone --depth 1 --single-branch --branch "$KERNEL_REF" \
       "$KERNEL_URL" "$KERNEL_DIR"
   else
-    SOURCE_DIRTY="$(git -C "$KERNEL_DIR" status --porcelain --untracked-files=all)"
-    [ -z "$SOURCE_DIRTY" ] || die \
+    if ! git -C "$KERNEL_DIR" diff --quiet || \
+       ! git -C "$KERNEL_DIR" diff --cached --quiet; then
+      die \
       "Kernel cache has local changes; remove it and let the builder clone again: $KERNEL_DIR"
+    fi
     git -C "$KERNEL_DIR" remote set-url origin "$KERNEL_URL"
     say "Updating kernel cache to $KERNEL_REF"
     git -C "$KERNEL_DIR" fetch --depth 1 origin "$KERNEL_REF"
@@ -76,7 +78,11 @@ ensure_kernel_source() {
   fi
 
   SOURCE_SHA="$(git -C "$KERNEL_DIR" rev-parse HEAD)"
-  SOURCE_DIRTY="$(git -C "$KERNEL_DIR" status --porcelain --untracked-files=all)"
+  SOURCE_DIRTY=""
+  if ! git -C "$KERNEL_DIR" diff --quiet || \
+     ! git -C "$KERNEL_DIR" diff --cached --quiet; then
+    SOURCE_DIRTY=tracked-changes
+  fi
   export SOURCE_SHA SOURCE_DIRTY
 }
 
@@ -88,9 +94,11 @@ ensure_firmware_source() {
     git clone --depth 1 --single-branch --branch "$FIRMWARE_REF" \
       "$FIRMWARE_URL" "$FIRMWARE_DIR"
   else
-    FIRMWARE_DIRTY="$(git -C "$FIRMWARE_DIR" status --porcelain --untracked-files=all)"
-    [ -z "$FIRMWARE_DIRTY" ] || die \
+    if ! git -C "$FIRMWARE_DIR" diff --quiet || \
+       ! git -C "$FIRMWARE_DIR" diff --cached --quiet; then
+      die \
       "Firmware cache has local changes; remove it and let the builder clone again: $FIRMWARE_DIR"
+    fi
     git -C "$FIRMWARE_DIR" remote set-url origin "$FIRMWARE_URL"
     say "Updating firmware cache to $FIRMWARE_REF"
     git -C "$FIRMWARE_DIR" fetch --depth 1 origin "$FIRMWARE_REF"
@@ -125,6 +133,8 @@ ensure_checkpoint() {
   [ -s "$CHECKPOINT/boot.img" ] || die 'Checkpoint boot.img is missing.'
   [ -s "$CHECKPOINT/lk2nd.img" ] || die 'Checkpoint lk2nd.img is missing.'
   [ -s "$CHECKPOINT/bootimg-info.txt" ] || die 'Checkpoint bootimg-info.txt is missing.'
+  grep -q 'root=/dev/mmcblk0p54' "$CHECKPOINT/bootimg-info.txt" || die \
+    'Checkpoint boot image uses an obsolete root device; rebuild the kernel checkpoint.'
 
   local krel archive
   krel="$(cat "$CHECKPOINT/kernel-release.txt")"
