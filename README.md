@@ -103,6 +103,9 @@ O kernel e seus modulos sao expostos a receita por variaveis como
 `KERNEL_RELEASE`, `KERNEL_MODULES_ARCHIVE`, `KERNEL_CONFIG_FILE` e
 `KERNEL_SYSTEM_MAP_FILE`. O firmware e exposto por
 `FIRMWARE_SOURCE_DIR`, `FIRMWARE_REF` e `FIRMWARE_SHA`.
+Quando existe, `~/.ssh/id_ed25519.pub` e copiada automaticamente para
+`root/.ssh/authorized_keys`; use `SANDERS_SSH_AUTHORIZED_KEY_FILE` para indicar
+outra chave.
 
 ## Instalacao no aparelho
 
