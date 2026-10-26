@@ -1,0 +1,14 @@
+[Unit]
+Description=Generate unique Sanders SSH host keys
+After=local-fs.target
+Before=ssh.service sshd.service sshd@.service
+ConditionPathIsReadWrite=/etc/ssh
+ConditionPathExists=!/etc/ssh/ssh_host_ed25519_key
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/ssh-keygen -A
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
