@@ -11,6 +11,7 @@
 : "${SANDERS_DEBIAN_MIN_FREE_MIB:=64}"
 : "${SANDERS_ROOTFS_LABEL:=debian-root}"
 : "${SANDERS_ROOT_PASSWORD:=sanders}"
+: "${SANDERS_TIMEZONE:=America/Sao_Paulo}"
 
 # The phone has no battery-backed RTC. Keep the first boot deterministic and
 # use Brazilian servers before public fallbacks.

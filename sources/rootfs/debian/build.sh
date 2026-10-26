@@ -27,6 +27,7 @@ PACKAGES="$SANDERS_DEBIAN_PACKAGES"
 IMAGE_SIZE_MIB="$SANDERS_DEBIAN_IMAGE_SIZE_MIB"
 MIN_FREE_MIB="$SANDERS_DEBIAN_MIN_FREE_MIB"
 ROOTFS_LABEL="$SANDERS_ROOTFS_LABEL"
+TIMEZONE="$SANDERS_TIMEZONE"
 NTP_SERVERS="$SANDERS_NTP_SERVERS"
 FALLBACK_NTP_SERVERS="$SANDERS_FALLBACK_NTP_SERVERS"
 NTP_ROOT_DISTANCE_MAX_SEC="$SANDERS_NTP_ROOT_DISTANCE_MAX_SEC"
@@ -111,6 +112,7 @@ case "$INCLUDE_GENERIC_QCOM_FIRMWARE" in
   0|1) ;;
   *) die 'SANDERS_DEBIAN_INCLUDE_GENERIC_QCOM_FIRMWARE must be 0 or 1.' ;;
 esac
+[ -f "/usr/share/zoneinfo/$TIMEZONE" ] || die "Unknown timezone: $TIMEZONE"
 
 if [ "$INCLUDE_GENERIC_QCOM_FIRMWARE" -eq 0 ]; then
   # The generic Qualcomm firmware package is useful for Venus/remoteproc, but
@@ -185,6 +187,12 @@ configure_root_password() {
   mv "$ROOTFS_DIR/etc/shadow.new" "$ROOTFS_DIR/etc/shadow"
   ln -sfn /lib/systemd/system/ssh.service \
     "$ROOTFS_DIR/etc/systemd/system/multi-user.target.wants/ssh.service"
+}
+
+configure_timezone() {
+  say "Configuring timezone $TIMEZONE"
+  ln -sfn "/usr/share/zoneinfo/$TIMEZONE" "$ROOTFS_DIR/etc/localtime"
+  printf '%s\n' "$TIMEZONE" > "$ROOTFS_DIR/etc/timezone"
 }
 
 mkdir -p "$OUT_DIR" "$RELEASES" "$WORK_ROOT"
@@ -273,6 +281,7 @@ ln -sfn "Image.gz-$KERNEL_RELEASE" "$ROOTFS_DIR/boot/vmlinuz"
 printf '%s\n' sanders > "$ROOTFS_DIR/etc/hostname"
 install_runtime_overlay
 configure_root_password
+configure_timezone
 printf 'kernel_release=%s\n' "$KERNEL_RELEASE" > "$ROOTFS_DIR/etc/sanders-kernel-release"
 
 sanitize_rootfs() {
@@ -403,6 +412,7 @@ apt_install_recommends=no
 apt_install_suggests=no
 ntp_servers=$NTP_SERVERS
 fallback_ntp_servers=$FALLBACK_NTP_SERVERS
+timezone=$TIMEZONE
 runtime_overlay=sources/rootfs/debian/overlay
 built_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 EOF
