@@ -1,0 +1,19 @@
+# Generated build products and caches
+/build/mainline/out/
+/build/mainline/releases/
+/build/mainline/latest
+/build/rootfs/*/
+/cache/mainline/
+/cache/rootfs/
+/cache/.build.lock
+
+# Local source checkouts
+/sources/linux/
+/sources/recipes/
+
+# Temporary files
+*.log
+*.tmp
+*.pyc
+__pycache__/
+.DS_Store
