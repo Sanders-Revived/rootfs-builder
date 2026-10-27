@@ -86,6 +86,7 @@ for overlay_file in \
   etc/fstab \
   etc/modprobe.d/sanders.conf \
   etc/modules-load.d/sanders.conf \
+  etc/systemd/zram-generator.conf \
   etc/NetworkManager/conf.d/99-usb0-unmanaged.conf \
   etc/ssh/sshd_config.d/90-sanders-root.conf \
   etc/systemd/system/sanders-ssh-hostkeys.service \
